@@ -1,0 +1,7 @@
+{
+  "sequence": "AEKL",
+  "environment": {"preset": "interfacial_neg"},
+  "n_decoys": 100,
+  "n_random": 100,
+  "seed": 42
+}

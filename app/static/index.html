@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Helix Design Studio</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/3Dmol-min.js" defer></script>
+  </head>
+  <body>
+    <div class="grain"></div>
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Environment-conditioned helix design</p>
+        <h1>Helix Design Studio</h1>
+        <p class="lede">
+          Explore how amino-acid sequence affects the compatibility of a predefined
+          alpha-helical state with polar media, apolar media and membrane-like
+          interfaces. The app can score a sequence, design single candidates or
+          families, compare environments, optimize one-vs-rest specificity and
+          export an ideal helical PDB.
+        </p>
+        <p class="article-note">
+          For a full explanation of the theory behind this platform, see:
+          <strong>Daniel Conde-Torres, Rebeca García-Fandiño, Ángel Piñeiro</strong>,
+          <a class="article-link" href="https://doi.org/10.1021/acs.jctc.6c01278" target="_blank" rel="noopener noreferrer">
+            <em>Environment-Conditioned Design of α-Helical Peptides</em>
+          </a>.
+          <span class="article-status">J. Chem. Theory Comput. 2026, 22, 9776–9789</span>
+          <span class="article-doi">doi: 10.1021/acs.jctc.6c01278</span>
+        </p>
+        <div class="pill-row">
+          <span class="pill">Linked to SIMBIOS</span>
+          <span class="pill">Guide included.</span>
+          <span class="pill">Score a sequence</span>
+          <span class="pill">Design families</span>
+          <span class="pill">Specificity design</span>
+          <span class="pill">Cross-environment tradeoffs</span>
+          <span class="pill">PDB export</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <button class="nav-btn" data-panel="about">About</button>
+        <button class="nav-btn active" data-panel="guide">Guide</button>
+        <button class="nav-btn" data-panel="score">Score</button>
+        <button class="nav-btn" data-panel="penetration">Penetration</button>
+        <button class="nav-btn" data-panel="design">Design</button>
+        <button class="nav-btn" data-panel="family">Family</button>
+        <button class="nav-btn" data-panel="compare">Compare</button>
+        <button class="nav-btn" data-panel="specificity">Specificity</button>
+        <button class="nav-btn" data-panel="cross">Cross-Design</button>
+        <button class="nav-btn" data-panel="pdb">PDB</button>
+      </aside>
+
+      <section class="content">
+        <section class="panel" id="panel-about">
+          <div class="panel-head">
+            <h2>About</h2>
+            <p>This application is presented as part of the broader scientific environment connected to SIMBIOS at the Universidade de Santiago de Compostela.</p>
+          </div>
+          <div class="about-grid">
+            <div class="about-card about-brand-card">
+              <div class="about-brand">
+                <img src="/static/assets/simbios-logo.png" alt="SIMBIOS logo" class="about-logo" />
+                <div>
+                  <h3>SIMBIOS</h3>
+                  <p class="about-tagline">Simulating life. Atom by atom.</p>
+                </div>
+              </div>
+              <div class="about-affiliation">
+                <img src="/static/assets/logo_USC.gif" alt="USC logo" class="about-usc-logo" />
+                <span>Universidade de Santiago de Compostela</span>
+              </div>
+              <p>Helix Design Studio is presented within the broader scientific context of SIMBIOS, a computational biophysics research environment at the University of Santiago de Compostela.</p>
+            </div>
+            <div class="about-card">
+              <h3>Helix Design Studio</h3>
+              <p>Helix Design Studio is an environment-conditioned sequence-design tool for predefined alpha-helical states. It helps users score sequences, design candidates and families, compare behavior across environments and export ideal helical structures for downstream work.</p>
+            </div>
+            <div class="about-card">
+              <h3>About the group</h3>
+              <p>SIMBIOS is presented on its website as a <strong>computational biophysics research group at the University of Santiago de Compostela</strong>. The broader research environment spans molecular simulation, membrane-active systems, biomolecular recognition and data-driven analysis.</p>
+            </div>
+            <div class="about-card">
+              <h3>Institutional link</h3>
+              <p>For broader institutional and scientific context, publications and group information, visit the official SIMBIOS website.</p>
+              <p><a class="external-link" href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">Visit SIMBIOS</a></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel active" id="panel-guide">
+          <div class="panel-head">
+            <h2>Guide and Interpretation</h2>
+            <p>This application scores how well a sequence fits a target alpha-helical state under a chosen environment model. It does not predict full folding from scratch or experimental activity directly.</p>
+          </div>
+          <div class="guide-grid">
+            <details class="guide-card" open>
+              <summary>What the app does</summary>
+              <p>Use <strong>Score</strong> to evaluate one sequence, <strong>Design</strong> to search for a low-energy sequence in one environment, <strong>Family</strong> to generate several diverse candidates, <strong>Compare</strong> to inspect the same sequence in two environments, <strong>Specificity</strong> to design one-vs-rest selective candidates, and <strong>Cross-Design</strong> to search for trade-offs between environments.</p>
+            </details>
+            <details class="guide-card" open>
+              <summary>How to read the results</summary>
+              <p><strong>Lower model energy</strong> means better compatibility with the chosen helical state within the model. These energies are reported in <strong>dimensionless Hamiltonian units</strong>, not in physical units such as kcal/mol, so they should be interpreted comparatively within the same scoring setup. A more negative <strong>Z-score</strong> means the sequence is better than the random-sequence background. <strong>Percentile</strong> tells you where the sequence sits relative to that random ensemble, with lower being better. <strong>Net charge</strong> follows the current model convention; in this version histidine is treated as neutral in the charge-dependent terms.</p>
+            </details>
+            <details class="guide-card">
+              <summary>What environments mean</summary>
+              <p><strong>Homogeneous polar</strong> approximates a water-like medium. <strong>Homogeneous apolar</strong> approximates a non-polar medium. <strong>Interfacial</strong> modes impose a membrane-facing and water-facing sector on the helical wheel, plus an anionic, neutral or cationic membrane surface charge. In the app, <strong>penetration depth</strong> is shown as a percentage, so it acts as an operational proxy for how much of the helix is exposed to the non-polar side of the interface.</p>
+            </details>
+            <details class="guide-card">
+              <summary>What λgap means</summary>
+              <p><strong>λgap</strong> is only used in <strong>Cross-Design</strong>. It penalizes sequences that behave very differently in the two chosen environments. Small values favor the best overall compromise; larger values push the search toward more balanced cross-environment compatibility.</p>
+            </details>
+            <details class="guide-card">
+              <summary>Hamiltonian terms</summary>
+              <div class="equation-block">
+                <div class="equation">
+                  H = λ<sub>env</sub>H<sub>env</sub> + λ<sub>chg</sub>H<sub>chg</sub> + λ<sub>local</sub>H<sub>local</sub> + λ<sub>pair</sub>H<sub>pair</sub> + λ<sub>elec</sub>H<sub>elec</sub> + λ<sub>neigh</sub>H<sub>neigh</sub>
+                </div>
+              </div>
+              <p><strong>Environment</strong> rewards residues that match the target medium. <strong>Charge</strong> captures residue preference with membrane surface charge. <strong>Local helix</strong> and <strong>Helix neighbors</strong> reward helical propensity. <strong>Pairwise</strong> adds sequence-dependent interaction preferences. <strong>Electrostatics</strong> captures attractive and repulsive charge interactions along the helix. The transverse hydrophobic moment is still computed as a geometric descriptor, shown on the helical wheel and used to orient predefined helices in interfacial benchmarking, but it is not an explicit energetic term in the current Hamiltonian. In the current parameterization, histidine contributes through the hydrophobicity and helical-propensity terms but is neutral in the charge-dependent terms.</p>
+            </details>
+            <details class="guide-card">
+              <summary>Practical limitations</summary>
+              <p>The model scores compatibility with a predefined helical scaffold. It is best interpreted as a relative design and ranking tool. Experimental activity, folding kinetics, insertion depth and membrane disruption require additional validation.</p>
+            </details>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-score">
+          <div class="panel-head">
+            <h2>Score a Sequence</h2>
+            <p>Estimate relative compatibility of a sequence with a predefined helical state in a selected environment.</p>
+          </div>
+          <form id="score-form" class="tool-grid">
+            <label>Reference peptide
+              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="score">
+                <option value="">Custom sequence</option>
+                <option value="ll37">LL-37</option>
+                <option value="melittin">Melittin</option>
+                <option value="magainin2">Magainin 2</option>
+                <option value="cecropin_a">Cecropin A</option>
+                <option value="pgla">PGLa</option>
+                <option value="walp23">WALP23</option>
+              </select>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+            </label>
+            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
+            <div class="reference-note hidden-field" data-reference-note="score"></div>
+            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
+            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="score">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg" selected>Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Random reference size
+              <input name="n_random" type="number" value="500" min="100" max="2000" step="100" />
+              <span class="field-hint">Number of random sequences used to estimate the background mean and standard deviation for the Z-score. Web limit: 2,000.</span>
+            </label>
+            <label class="penetration-field" data-penetration-field="score">Penetration depth
+              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="score" />
+              <span class="field-hint">Operational proxy for how much of the helix is exposed to the non-polar side of the interface. Current value: <strong data-range-value="score">50%</strong>.</span>
+            </label>
+            <div class="actions"><button type="submit">Score sequence</button></div>
+          </form>
+          <div id="score-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-penetration">
+          <div class="panel-head">
+            <h2>Optimal Penetration</h2>
+            <p>Scan penetration depth for one sequence in one interfacial environment and define the optimum as the most negative Z-score.</p>
+          </div>
+          <form id="penetration-form" class="tool-grid">
+            <label>Reference peptide
+              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="penetration">
+                <option value="">Custom sequence</option>
+                <option value="ll37">LL-37</option>
+                <option value="melittin">Melittin</option>
+                <option value="magainin2">Magainin 2</option>
+                <option value="cecropin_a">Cecropin A</option>
+                <option value="pgla">PGLa</option>
+                <option value="walp23">WALP23</option>
+              </select>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+            </label>
+            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
+            <div class="reference-note hidden-field" data-reference-note="penetration"></div>
+            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
+            <label>Interface type<select name="preset" class="env-preset" data-env-scope="penetration_scan">
+              <option value="interfacial_neg" selected>Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Random reference size
+              <input name="n_random" type="number" value="400" min="100" max="2000" step="100" />
+              <span class="field-hint">Background size used for each sampled penetration. Web limit: 2,000.</span>
+            </label>
+            <div class="scan-range-fixed">
+              <strong>Penetration scan</strong>
+              <span class="field-hint">The scan is fixed from <strong>0% = homogeneous polar medium (water-like)</strong> to <strong>100% = homogeneous apolar medium (chloroform-like)</strong>, with the selected interfacial preset used at intermediate points. The web app samples this path every 5%, for a total of <strong>21 points</strong>.</span>
+            </div>
+            <div class="actions"><button type="submit">Optimize penetration</button></div>
+          </form>
+          <div id="penetration-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-design">
+          <div class="panel-head">
+            <h2>Design for One Environment</h2>
+            <p>Run sequence-space simulated annealing against a single target environment.</p>
+          </div>
+          <form id="design-form" class="tool-grid">
+            <label>Length
+              <input name="length" type="number" value="20" min="4" max="40" />
+              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
+            </label>
+            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
+            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="design">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg" selected>Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Optimization steps (classical simulated annealing)
+              <input name="steps" type="number" value="12000" min="1000" max="50000" step="1000" />
+              <span class="field-hint">Number of Monte Carlo mutation steps used during the simulated-annealing search. Higher values let the optimizer test more sequence changes, usually improving exploration at the cost of longer runtime. Web limit: 50,000.</span>
+            </label>
+            <label class="penetration-field" data-penetration-field="design">Penetration depth
+              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="design" />
+              <span class="field-hint">Current value: <strong data-range-value="design">50%</strong>. Higher percentages correspond to stronger exposure to the non-polar side of the interface.</span>
+            </label>
+            <label>Restarts
+              <input name="restarts" type="number" value="8" min="1" max="20" />
+              <span class="field-hint">Independent annealing runs from different random starting points. Web limit: 20.</span>
+            </label>
+            <div class="support-note">Need heavier searches or custom large-scale runs? Please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
+            <div class="actions"><button type="submit">Design sequence</button></div>
+          </form>
+          <div id="design-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-family">
+          <div class="panel-head">
+            <h2>Design a Family</h2>
+            <p>Generate several unique low-energy candidates for the same environment instead of a single optimum.</p>
+          </div>
+          <form id="family-form" class="tool-grid">
+            <label>Length
+              <input name="length" type="number" value="20" min="4" max="40" />
+              <span class="field-hint">Number of residues in each designed helix. Web limit: 40.</span>
+            </label>
+            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
+            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="family">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg" selected>Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Family size
+              <input name="family_size" type="number" value="6" min="2" max="12" />
+              <span class="field-hint">Requested number of diverse low-energy candidates. If the search cannot find that many unique solutions, the returned family may be smaller. Web limit: 12.</span>
+            </label>
+            <label class="penetration-field" data-penetration-field="family">Penetration depth
+              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="family" />
+              <span class="field-hint">Current value: <strong data-range-value="family">50%</strong>. Used only for interfacial families and interpreted as non-polar exposure percentage.</span>
+            </label>
+            <label>Optimization steps (classical simulated annealing)
+              <input name="steps" type="number" value="10000" min="1000" max="20000" step="1000" />
+              <span class="field-hint">Number of Monte Carlo mutation steps used in each annealing run. More steps generally help each candidate settle into a better low-energy sequence, but they also make family generation slower. Web limit: 20,000.</span>
+            </label>
+            <label>Restarts per candidate
+              <input name="restarts" type="number" value="6" min="1" max="20" />
+              <span class="field-hint">More restarts improve robustness but increase runtime. Web limit: 20.</span>
+            </label>
+            <div class="support-note">Need larger families or heavier searches? Please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
+            <div class="actions"><button type="submit">Generate family</button></div>
+          </form>
+          <div id="family-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-compare">
+          <div class="panel-head">
+            <h2>Compare Two Environments</h2>
+            <p>Quantify environmental selectivity and compare the same sequence across two target states.</p>
+          </div>
+          <form id="compare-form" class="tool-grid">
+            <label>Reference peptide
+              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="compare">
+                <option value="">Custom sequence</option>
+                <option value="ll37">LL-37</option>
+                <option value="melittin">Melittin</option>
+                <option value="magainin2">Magainin 2</option>
+                <option value="cecropin_a">Cecropin A</option>
+                <option value="pgla">PGLa</option>
+                <option value="walp23">WALP23</option>
+              </select>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+            </label>
+            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
+            <div class="reference-note hidden-field" data-reference-note="compare"></div>
+            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
+            <div></div>
+            <label>Environment A<select name="preset_a" class="env-preset" data-env-scope="compare_a">
+              <option value="homogeneous_polar" selected>Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg">Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Environment B<select name="preset_b" class="env-preset" data-env-scope="compare_b">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar" selected>Homogeneous apolar</option>
+              <option value="interfacial_neg">Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label class="penetration-field" data-penetration-field="compare_a">Penetration depth A
+              <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_a" />
+              <span class="field-hint">Current value: <strong data-range-value="compare_a">50%</strong>. Used only if environment A is interfacial.</span>
+            </label>
+            <label class="penetration-field" data-penetration-field="compare_b">Penetration depth B
+              <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_b" />
+              <span class="field-hint">Current value: <strong data-range-value="compare_b">50%</strong>. Used only if environment B is interfacial.</span>
+            </label>
+            <div class="actions"><button type="submit">Compare environments</button></div>
+          </form>
+          <div id="compare-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-cross">
+          <div class="panel-head">
+            <h2>Cross-Environment Design</h2>
+            <p>Optimize a joint objective with a gap penalty to search for environmentally robust helical sequences.</p>
+          </div>
+          <form id="cross-form" class="tool-grid">
+            <label>Length
+              <input name="length" type="number" value="20" min="4" max="40" />
+              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
+            </label>
+            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
+            <label>Environment A<select name="preset_a" class="env-preset" data-env-scope="cross_a">
+              <option value="homogeneous_polar" selected>Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg">Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label>Environment B<select name="preset_b" class="env-preset" data-env-scope="cross_b">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar" selected>Homogeneous apolar</option>
+              <option value="interfacial_neg">Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label class="penetration-field" data-penetration-field="cross_a">Penetration depth A
+              <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_a" />
+              <span class="field-hint">Current value: <strong data-range-value="cross_a">50%</strong>. Used only if environment A is interfacial.</span>
+            </label>
+            <label class="penetration-field" data-penetration-field="cross_b">Penetration depth B
+              <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_b" />
+              <span class="field-hint">Current value: <strong data-range-value="cross_b">50%</strong>. Used only if environment B is interfacial.</span>
+            </label>
+            <label>Optimization steps (classical simulated annealing)
+              <input name="steps" type="number" value="16000" min="1000" max="60000" step="1000" />
+              <span class="field-hint">Number of Monte Carlo mutation steps in the joint simulated-annealing search. Larger values give the optimizer more chances to improve the sequence across both environments, but increase runtime. Web limit: 60,000.</span>
+            </label>
+            <label>λgap
+              <input name="lambda_gap" type="number" value="0.5" step="0.1" min="0" max="10" />
+              <span class="field-hint">Penalty applied when the same sequence behaves too differently in the two environments. Increase it to favor more balanced solutions. Web limit: 10.</span>
+            </label>
+            <label>Restarts
+              <input name="restarts" type="number" value="10" min="1" max="20" />
+              <span class="field-hint">Independent optimization runs from different starting points. Web limit: 20.</span>
+            </label>
+            <div class="support-note">For heavier cross-environment searches or custom campaigns, please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
+            <div class="actions"><button type="submit">Run cross-design</button></div>
+          </form>
+          <div id="cross-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-specificity">
+          <div class="panel-head">
+            <h2>Specificity Design</h2>
+            <p>Design a helix that is favorable in one target environment while staying worse in a chosen set of competing off-target environments.</p>
+          </div>
+          <form id="specificity-form" class="tool-grid">
+            <label>Length
+              <input name="length" type="number" value="20" min="4" max="40" />
+              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
+            </label>
+            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
+            <label>Target environment<select name="target_preset" class="env-preset" data-env-scope="specificity_target">
+              <option value="homogeneous_polar">Homogeneous polar</option>
+              <option value="homogeneous_apolar">Homogeneous apolar</option>
+              <option value="interfacial_neg" selected>Interfacial anionic</option>
+              <option value="interfacial_neu">Interfacial neutral</option>
+              <option value="interfacial_pos">Interfacial cationic</option>
+            </select></label>
+            <label class="penetration-field" data-penetration-field="specificity_shared">Penetration depth
+              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="25" class="penetration-slider" data-range-output="specificity_shared" />
+              <span class="field-hint">Current value: <strong data-range-value="specificity_shared">25%</strong>. Used as the common penetration depth for all interfacial target and off-target environments in this design.</span>
+            </label>
+            <fieldset class="selector-group">
+              <legend>Competing off-target environments</legend>
+              <div class="selector-grid">
+                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_neu" checked /> <span>Interfacial neutral</span></label>
+                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_pos" checked /> <span>Interfacial cationic</span></label>
+                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="homogeneous_polar" checked /> <span>Homogeneous polar</span></label>
+                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="homogeneous_apolar" checked /> <span>Homogeneous apolar</span></label>
+                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_neg" /> <span>Interfacial anionic</span></label>
+              </div>
+              <div class="support-note specificity-explainer">The specificity target is <strong>L<sub>&lambda;</sub> = &lambda;H<sub>target</sub> + (1-&lambda;)(H<sub>target</sub> - min(H<sub>off-targets</sub>))</strong>. Lower values are better. Use <strong>&lambda; = 0</strong> for the hard one-vs-rest limit, and larger &lambda; values when you want to give progressively more weight to absolute target favorability.</div>
+            </fieldset>
+            <label>&lambda; balance between target affinity and specificity
+              <input type="range" name="lambda_balance" min="0" max="1" step="0.05" value="0" class="lambda-balance-slider" data-range-output="specificity_lambda" />
+              <span class="field-hint">Current value: <strong data-range-value="specificity_lambda">0.00</strong>. Smaller &lambda; emphasizes stricter selectivity; larger &lambda; favors absolute compatibility with the target environment.</span>
+            </label>
+            <label>Number of candidate sequences
+              <input name="num_sequences" type="number" value="10" min="1" max="10" />
+              <span class="field-hint">How many unique specificity candidates to recover in one run. The app will return a ranked table and let you inspect each candidate in detail below.</span>
+            </label>
+            <label>Optimization steps (classical simulated annealing)
+              <input name="steps" type="number" value="60000" min="1000" max="60000" step="1000" />
+              <span class="field-hint">Number of Monte Carlo mutation steps in the one-vs-rest simulated-annealing search. The default here matches the manuscript-grade specificity runs, so it is slower but much more reproducible. Web limit: 60,000.</span>
+            </label>
+            <label>Total restart budget
+              <input name="restarts" type="number" value="20" min="1" max="20" />
+              <span class="field-hint">Total number of annealing restarts allocated to the whole run. This budget is distributed across the requested candidate sequences, so asking for more candidates gives fewer restarts per candidate. Web limit: 20.</span>
+            </label>
+            <div class="support-note">This mode is useful for designing candidates that prefer one target state against several competing media, for example an anionic membrane against neutral/cationic interfaces plus homogeneous polar and apolar media.</div>
+            <div class="actions"><button type="submit">Run specificity design</button></div>
+          </form>
+          <div id="specificity-result" class="result"></div>
+        </section>
+
+        <section class="panel" id="panel-pdb">
+          <div class="panel-head">
+            <h2>Export Ideal Helix PDB</h2>
+            <p>Build an idealized alpha-helical PDB for a selected sequence and download or copy it.</p>
+          </div>
+          <form id="pdb-form" class="tool-grid">
+            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
+            <div class="actions"><button type="submit">Generate PDB </button></div>
+          </form>
+          <div id="pdb-result" class="result"></div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <span>© 2026 Helix Design Studio contributors. Original code: MIT license.</span>
+        <div class="footer-stats" id="footer-stats" aria-live="polite">
+          <span class="visit-counter" id="visit-counter-total">Visits: —</span>
+          <span class="visit-counter" id="visit-counter-unique">Unique visitors: —</span>
+          <span class="visit-counter" id="visit-counter-runs">Runs: —</span>
+        </div>
+      </div>
+    </footer>
+
+    <template id="loading-template"><div class="loading">Computing with the project Hamiltonian…</div></template>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+**
+!requirements.txt
+!LICENSE
+!LICENSES/
+!LICENSES/**
+!THIRD_PARTY_NOTICES.md
+!app/
+!app/**
+!Code/
+!Code/**
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/*.jsonl
+**/*.log
+app/var/
