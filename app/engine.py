@@ -75,7 +75,7 @@ HYDROPHOBICITY_FP = {
     "D": -0.77, "E": -0.64, "K": -0.99, "R": -1.01, "H": 0.13,
     "G": 0.00, "A": 0.31, "V": 1.22, "L": 1.70, "I": 1.80,
     "P": 0.72, "M": 1.23, "F": 1.79, "W": 2.25, "Y": 0.96,
-    "T": -0.04, "S": 0.26, "C": 1.54, "N": -0.60, "Q": -0.22,
+    "T": 0.26, "S": -0.04, "C": 1.54, "N": -0.60, "Q": -0.22,
 }
 
 RESIDUE_COLORS = {
@@ -349,7 +349,7 @@ def random_reference(
         energies.append(compute_breakdown(builder, codes, weights)["total"])
     mean = statistics.fmean(energies)
     std = statistics.pstdev(energies) or 1.0
-    return {"mean": float(mean), "std": float(std), "energies": energies}
+    return {"mean": float(mean), "std": float(std), "energies": energies, "seed": seed}
 
 
 def score_sequence_with_builder(
@@ -376,7 +376,17 @@ def score_sequence_with_builder(
         "energy": energy,
         "z_score": float(z_score),
         "percentile_lower_is_better": float(percentile),
-        "random_reference": {"mean": ref["mean"], "std": ref["std"], "n": n_random},
+        "random_reference": {
+            "mean": ref["mean"], "std": ref["std"], "n": n_random, "seed": ref["seed"],
+        },
+        "calibration": {
+            "n_decoys": builder.kwargs.get("n_decoys", 2000),
+            "seed": builder.kwargs.get("zscore_seed", 42),
+            "cache_version": builder.stats_cache_version,
+        },
+        "orientation_mode": (
+            "hydrophobic_moment" if "phase_aligned_to_hydrophobic_moment" in environment else "fixed"
+        ),
         "breakdown": breakdown,
         "observables": {
             "abs_mu_h": mu_descriptor["magnitude"],
@@ -694,29 +704,25 @@ def _build_specificity_candidate_payload(
     objective: float,
     best_target_energy: float,
     best_off_energies: List[float],
+    target_builder: HamiltonianBuilder,
+    off_builders: List[HamiltonianBuilder],
 ) -> Dict[str, Any]:
-    n_decoys_eval = 3000
+    # Report the very same Hamiltonians used during the search. Rebuilding here
+    # used to change both the calibration and the interfacial orientation.
     n_random = 3000
-    target_score = score_sequence(
-        sequence,
-        target_env,
-        amino_acids,
-        weights,
-        n_decoys=n_decoys_eval,
-        n_random=n_random,
-        seed=seed + 1001,
+    calibration_seed = int(target_builder.kwargs.get("zscore_seed", 42))
+    target_ref = random_reference(
+        target_builder, amino_acids, weights, n_random, calibration_seed + 17
+    )
+    target_score = score_sequence_with_builder(
+        sequence, target_builder, target_env, amino_acids, weights, target_ref, n_random
     )
     off_target_scores = []
-    for idx, env in enumerate(off_target_envs):
+    for idx, (env, builder) in enumerate(zip(off_target_envs, off_builders)):
+        ref = random_reference(builder, amino_acids, weights, n_random, calibration_seed + 18 + idx)
         off_target_scores.append(
-            score_sequence(
-                sequence,
-                env,
-                amino_acids,
-                weights,
-                n_decoys=n_decoys_eval,
-                n_random=n_random,
-                seed=seed + 1101 + idx,
+            score_sequence_with_builder(
+                sequence, builder, env, amino_acids, weights, ref, n_random
             )
         )
 
@@ -1100,16 +1106,19 @@ def cross_environment_design(
 
     assert best_codes is not None
     sequence = codes_to_seq(best_codes, amino_acids)
-    comparison = compare_environments_fixed(
-        sequence,
-        env_a,
-        env_b,
-        amino_acids,
-        w,
-        n_decoys=n_decoys,
-        n_random=500,
-        seed=seed,
-    )
+    # Reuse both search builders, including their calibration seeds, for display.
+    ref_a = random_reference(builder_a, amino_acids, w, n_random=500, seed=seed + 17)
+    ref_b = random_reference(builder_b, amino_acids, w, n_random=500, seed=seed + 18)
+    scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, 500)
+    scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, 500)
+    comparison = {
+        "sequence": sequence,
+        "environment_a": scored_a,
+        "environment_b": scored_b,
+        "energy_gap": abs(scored_a["energy"] - scored_b["energy"]),
+        "z_score_gap": abs(scored_a["z_score"] - scored_b["z_score"]),
+        "joint_energy": scored_a["energy"] + scored_b["energy"],
+    }
     comparison["cross_design"] = {
         "lambda_gap": lambda_gap,
         "objective": best_obj,
@@ -1312,6 +1321,8 @@ def design_specificity_stream(
             objective=result["objective"],
             best_target_energy=result["best_target_energy"],
             best_off_energies=result["best_off_energies"],
+            target_builder=target_builder,
+            off_builders=off_builders,
         )
         unique_results[sequence] = candidate_payload
         accepted_codes.append(result["codes"])

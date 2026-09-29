@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. It provides sequence scoring, single and family design, comparison between environments, specificity design, penetration scans and idealized PDB export through a browser and a FastAPI API.
 
-**Scientific status:** this initial public source distribution preserves the original scoring implementation. A known residue-to-matrix indexing issue affects helix-neighbor scores and can affect sequence rankings and designs. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) before interpreting results. Passing software tests does not establish scientific validity; this snapshot is not a validated submission release.
+**Scientific status (0.2.0rc1):** this review candidate corrects residue-label mapping and preserves search/display calibration. Two malformed parameter-table headers have been reconstructed provisionally; their source/order still needs author confirmation. See [PARAMETER_PROVENANCE.md](PARAMETER_PROVENANCE.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Passing software tests establishes implementation consistency, not scientific validity. This candidate is not yet a validated submission release.
 
 ## Run locally
 
@@ -42,7 +42,7 @@ curl --fail-with-body http://127.0.0.1:8000/api/score \
   --data @examples/score.json
 ```
 
-The example uses small calibration and reference samples for a quick execution check. It is not a benchmark or a recommended scientific sampling protocol. Record the source commit, request parameters, residue alphabet **including its order**, seed and dependency versions when reporting results.
+The example uses small calibration and reference samples for a quick execution check. It is not a benchmark or a recommended scientific sampling protocol. Record the source commit, request parameters, residue alphabet **including its order**, seed and dependency versions when reporting results. Responses include calibration/reference seeds and an orientation-mode field. Score/Compare automatically align interfacial sequences to the hydrophobic moment; search outputs retain fixed search geometry. A subsequent Score request is a distinct evaluation protocol.
 
 ## Verification
 
@@ -51,7 +51,7 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-The tests exercise the computational API, streaming responses, static assets, idealized PDB export, invalid-input handling and disabled usage logging. A separate expected-failure test exposes the known alphabet-order defect; it should become a passing test when that defect is resolved. Small test inputs check execution and consistency, not scientific convergence or performance at the web limits.
+The tests exercise the computational API, streaming responses, static assets, idealized PDB export, invalid-input handling and disabled usage logging. Regression tests check raw-score invariance to alphabet order, matrix validation and agreement between search objectives and displayed scores. Small test inputs check execution and consistency, not scientific convergence or performance at the web limits.
 
 ## Configuration and data
 

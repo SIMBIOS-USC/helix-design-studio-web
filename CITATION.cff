@@ -1,6 +1,8 @@
 cff-version: 1.2.0
 message: "If you use Helix Design Studio, please cite this software version and the method article listed below."
 type: software
+version: 0.2.0rc1
+date-released: 2026-09-29
 title: Helix Design Studio
 authors:
   - family-names: Conde-Torres

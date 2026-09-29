@@ -1,16 +1,19 @@
-# Known scientific limitations
+# Scientific status of review candidate 0.2.0rc1
 
-## Helix-neighbor matrix indexing
+## Parameter provenance requires author confirmation
 
-The current `HamiltonianBuilder._load_matrices_from_files` uses residue labels to map the Miyazawa–Jernigan matrix, but discards the labels supplied with the three helix-neighbor tables (`M1`, `M3`, `M4`). Those tables are subsequently indexed by positions in the request's residue alphabet. Consequently, changing the alphabet order can change the raw helix-neighbor score of the **same chemical sequence**. The default design and scoring workflows also use different alphabets, so this can affect comparisons between workflows, rankings and selected sequences.
+The candidate repairs the helix-neighbor indexing defect in the initial public snapshot: matrices are now mapped using residue labels, with dimensions, unique labels and finite values checked. Raw-score alphabet-order invariance is covered by regression tests.
 
-Additionally, the headers of `helix_sd_i_3.txt` and `helix_sd_i_4.txt` contain 22 symbols, including repeated Y and V, while their numeric matrices are 20×20. Correct row/column identities must be established from the parameter source before changing the mapping. The runtime tables and scoring equations have therefore been preserved in this initial source distribution rather than silently reconstructed.
+The supplied M3/M4 numeric arrays have 20 rows and columns, but the original headers contained 22 symbols, repeating Y and V. This candidate removes the duplicate header entries while preserving first occurrence and all numeric entries. This is a provisional reconstruction of internal file intent, not independent verification against an original scientific source. See PARAMETER_PROVENANCE.md for evidence and limitations. Author confirmation of the source/order remains necessary before submission. Recompute results if that interpretation changes.
 
-The expected-failure regression test documents the required alphabet-order invariance. Fixing this issue requires verifying table provenance/order, mapping by residue identity, checking all alphabets and rerunning the affected scientific comparisons. Keeping one alphabet order fixed is useful for reproducing this snapshot but **does not resolve the underlying defect**.
+## Search and rescoring conventions
+
+Specificity and cross-design outputs now retain the calibration and fixed geometry used during search; their displayed energies reconstruct the recorded objective. Score and Compare automatically align interfacial sequences to their hydrophobic moments. Rescoring a generated sequence through those workflows therefore changes the evaluation protocol. Different alphabets also define different random-reference distributions.
 
 ## Interpretation
 
-- Scores concern compatibility of sequences with an assumed alpha-helical state. They do not establish folding, binding affinity, membrane insertion, biological activity or experimental stability.
-- PDB export builds an ideal alpha helix using PeptideBuilder; it is not a structure prediction or an energy-minimized model.
-- Calibration and random-reference distributions depend on length, alphabet, environment, sample size and seed. Scores from distinct protocols should not be assumed directly comparable.
-- Automated execution tests and agreement with the source snapshot establish implementation continuity only. They do not validate the parameter tables or the scientific conclusions.
+- Scores measure compatibility within an assumed helical state; they do not establish folding, binding, membrane insertion, biological activity or experimental stability.
+- PDB export builds an ideal helix; it is not structure prediction or energy minimization.
+- The 21-point Penetration scan changes an angular exposure mask, with homogeneous endpoints. It is not a free-energy profile along a physical insertion coordinate.
+- Calibration and reference samples, orientation and seeds affect results. Finite sampling variation should not be confused with a systematic chemical effect.
+- Execution, invariance and objective-consistency tests do not validate the parameter sources or experimental predictions.
