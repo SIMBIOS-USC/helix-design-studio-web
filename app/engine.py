@@ -5,6 +5,9 @@ import os
 import statistics
 import sys
 import tempfile
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional
 
@@ -23,7 +26,11 @@ CODE_DIR = _resolve_code_dir()
 if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
-from core.hamiltonian_builder import HamiltonianBuilder  # noqa: E402
+from core.hamiltonian_builder import (  # noqa: E402
+    FAUCHERE_PLISKA_HYDROPHOBICITY,
+    HamiltonianBuilder,
+    hydrophobic_moment,
+)
 
 DEFAULT_ALPHABET_16 = ["A", "P", "D", "E", "Q", "L", "M", "F", "K", "S", "T", "W", "Y", "V", "H", "G"]
 DEFAULT_WEIGHTS = {
@@ -34,9 +41,12 @@ DEFAULT_WEIGHTS = {
     "lambda_helix_pairs": 1.5,
     "lambda_electrostatic": 4.0,
 }
-DEFAULT_CACHE_DIR = os.environ.get(
-    "HELIX_CACHE_DIR", str(Path(tempfile.gettempdir()) / "helix-design-studio-cache")
-)
+
+
+def default_cache_dir() -> str:
+    """Se lee en cada llamada para respetar HELIX_CACHE_DIR aunque cambie tras importar."""
+    return os.environ.get("HELIX_CACHE_DIR") or str(Path(tempfile.gettempdir()) / "helix-design-studio-cache")
+
 
 ENVIRONMENT_PRESETS: Dict[str, Dict[str, Any]] = {
     "homogeneous_polar": {
@@ -71,12 +81,7 @@ ENVIRONMENT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-HYDROPHOBICITY_FP = {
-    "D": -0.77, "E": -0.64, "K": -0.99, "R": -1.01, "H": 0.13,
-    "G": 0.00, "A": 0.31, "V": 1.22, "L": 1.70, "I": 1.80,
-    "P": 0.72, "M": 1.23, "F": 1.79, "W": 2.25, "Y": 0.96,
-    "T": -0.04, "S": 0.26, "C": 1.54, "N": -0.60, "Q": -0.22,
-}
+HYDROPHOBICITY_FP = FAUCHERE_PLISKA_HYDROPHOBICITY
 
 RESIDUE_COLORS = {
     "hydrophobic": "#b05a1b",
@@ -155,38 +160,24 @@ def resolve_environment(environment: Optional[Dict[str, Any]]) -> Dict[str, Any]
     return base
 
 
-def align_interfacial_environment_to_hydrophobic_moment(
-    sequence: str,
-    environment: Dict[str, Any],
-) -> Dict[str, Any]:
-    descriptor = hydrophobic_moment_descriptor(sequence)
+def is_interfacial(environment: Dict[str, Any]) -> bool:
+    return str(environment.get("preset", "")).startswith("interfacial_")
+
+
+def effective_environment(builder: HamiltonianBuilder, codes: List[int], environment: Dict[str, Any]) -> Dict[str, Any]:
+    """Entorno con la fase de rueda realmente usada para puntuar esta secuencia."""
     env = dict(environment)
-    if not str(env.get("preset", "")).startswith("interfacial_"):
-        return env
-
-    if descriptor["magnitude"] < 1e-10:
-        env["phase_aligned_to_hydrophobic_moment"] = False
-        env["hydrophobic_moment_phase_deg"] = 0.0
-        return env
-
-    native_phase_deg = descriptor["phase_deg"]
-    aligned_phase_deg = (-native_phase_deg) % 360.0
-    env["wheel_phase_deg"] = aligned_phase_deg
-    env["phase_aligned_to_hydrophobic_moment"] = True
-    env["hydrophobic_moment_phase_deg"] = native_phase_deg
+    env["wheel_phase_deg"] = builder.phase_for(codes)
+    if builder.align_phase:
+        descriptor = hydrophobic_moment_descriptor(codes_to_seq(codes, builder.amino_acids))
+        env["phase_aligned_to_hydrophobic_moment"] = descriptor["magnitude"] >= 1e-10
+        env["hydrophobic_moment_phase_deg"] = descriptor["phase_deg"]
     return env
 
 
 def hydrophobic_moment_descriptor(sequence: str) -> Dict[str, float]:
-    mx = 0.0
-    my = 0.0
     cleaned = sequence.strip().upper()
-    for idx, aa in enumerate(cleaned, start=1):
-        hydro = HYDROPHOBICITY_FP.get(aa, 0.0)
-        theta_deg = (idx - 1) * 100.0
-        theta = math.radians(theta_deg)
-        mx += hydro * math.cos(theta)
-        my += hydro * math.sin(theta)
+    mx, my = hydrophobic_moment(cleaned)
     magnitude = math.hypot(mx, my)
     phase_deg = math.degrees(math.atan2(my, mx)) if magnitude >= 1e-10 else 0.0
     return {
@@ -228,7 +219,7 @@ def build_builder(
     environment: Dict[str, Any],
     n_decoys: int = 2000,
     zscore_seed: int = 42,
-    stats_cache_dir: str = DEFAULT_CACHE_DIR,
+    stats_cache_dir: Optional[str] = None,
 ) -> HamiltonianBuilder:
     bpp = bits_per_position(len(amino_acids))
     return HamiltonianBuilder(
@@ -238,11 +229,13 @@ def build_builder(
         n_qubits=length * bpp,
         n_decoys=n_decoys,
         zscore_seed=zscore_seed,
-        stats_cache_dir=stats_cache_dir,
+        stats_cache_dir=stats_cache_dir or default_cache_dir(),
+        stats_cache_max_files=int(os.environ.get("HELIX_CACHE_MAX_FILES") or 2000),
         membrane_mode="wheel",
         wheel_phase_deg=float(environment["wheel_phase_deg"]),
         wheel_halfwidth_deg=float(environment["wheel_halfwidth_deg"]),
         membrane_charge=str(environment["membrane_charge"]),
+        align_phase=is_interfacial(environment),
         max_interaction_dist=1,
     )
 
@@ -259,22 +252,40 @@ def codes_to_seq(codes: List[int], amino_acids: List[str]) -> str:
     return "".join(amino_acids[idx] for idx in codes)
 
 
+class CalculationTimeout(RuntimeError):
+    """La búsqueda superó el tiempo máximo asignado a una petición."""
+
+
+_calculation_limits = threading.local()
+
+
+@contextmanager
+def calculation_deadline(deadline: Optional[float]) -> Generator[None, None, None]:
+    """Fija, para el hilo actual, un instante límite (time.monotonic) para los cálculos."""
+    previous = getattr(_calculation_limits, "deadline", None)
+    _calculation_limits.deadline = deadline
+    try:
+        yield
+    finally:
+        _calculation_limits.deadline = previous
+
+
+def _check_deadline() -> None:
+    deadline = getattr(_calculation_limits, "deadline", None)
+    if deadline is not None and time.monotonic() > deadline:
+        raise CalculationTimeout("The calculation exceeded the time limit of the web server.")
+
+
 def compute_breakdown(builder: HamiltonianBuilder, codes: List[int], weights: Dict[str, float]) -> Dict[str, float]:
-    raw = {
-        "local": builder._raw_helix_local(codes),
-        "env": builder._raw_env_pol(codes),
-        "charge": builder._raw_env_chg(codes),
-        "pairwise": builder._raw_pw_int(codes),
-        "electrostatic": builder._raw_electrostatic(codes),
-        "neigh": builder._raw_helix_neigh(codes),
-    }
+    _check_deadline()
+    raw = builder.raw_terms(codes)
     z = {
-        "local": builder._apply_z_score("helix_local", raw["local"]),
-        "env": builder._apply_z_score("env_pol", raw["env"]),
-        "charge": builder._apply_z_score("env_chg", raw["charge"]),
-        "pairwise": builder._apply_z_score("pw_int", raw["pairwise"]),
+        "local": builder._apply_z_score("helix_local", raw["helix_local"]),
+        "env": builder._apply_z_score("env_pol", raw["env_pol"]),
+        "charge": builder._apply_z_score("env_chg", raw["env_chg"]),
+        "pairwise": builder._apply_z_score("pw_int", raw["pw_int"]),
         "electrostatic": builder._apply_z_score("electrostatic", raw["electrostatic"]),
-        "neigh": builder._apply_z_score("helix_neigh", raw["neigh"]),
+        "neigh": builder._apply_z_score("helix_neigh", raw["helix_neigh"]),
     }
     weighted = {
         "local": weights["lambda_local"] * z["local"],
@@ -363,6 +374,7 @@ def score_sequence_with_builder(
 ) -> Dict[str, Any]:
     sequence = sequence.strip().upper()
     codes = seq_to_codes(sequence, amino_acids)
+    environment = effective_environment(builder, codes, environment)
     breakdown = compute_breakdown(builder, codes, weights)
     mu_descriptor = hydrophobic_moment_descriptor(sequence)
     energy = breakdown["total"]
@@ -423,25 +435,6 @@ def score_sequence(
     sequence = sequence.strip().upper()
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
-    env = align_interfacial_environment_to_hydrophobic_moment(sequence, env)
-    w = normalize_weights(weights)
-    builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
-    return score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
-
-
-def score_sequence_fixed_environment(
-    sequence: str,
-    environment: Optional[Dict[str, Any]] = None,
-    residues: Optional[List[str] | str] = None,
-    weights: Optional[Dict[str, float]] = None,
-    n_decoys: int = 2000,
-    n_random: int = 500,
-    seed: int = 42,
-) -> Dict[str, Any]:
-    sequence = sequence.strip().upper()
-    amino_acids = normalize_residues(residues)
-    env = resolve_environment(environment)
     w = normalize_weights(weights)
     builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
     ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
@@ -455,7 +448,7 @@ def simulated_annealing(
     steps: int,
     restarts: int,
     seed: int,
-    objective_fn: Optional[Callable[[List[int]], float]] = None,
+    penalty_fn: Optional[Callable[[List[int]], float]] = None,
 ) -> Dict[str, Any]:
     rng = np.random.default_rng(seed)
     n_aa = len(amino_acids)
@@ -466,7 +459,7 @@ def simulated_annealing(
     for _ in range(restarts):
         current = rng.integers(0, n_aa, size=builder.L).tolist()
         current_energy = compute_breakdown(builder, current, weights)["total"]
-        current_objective = objective_fn(current) if objective_fn else current_energy
+        current_objective = current_energy + penalty_fn(current) if penalty_fn else current_energy
         local_best = list(current)
         local_best_energy = current_energy
         local_best_objective = current_objective
@@ -482,7 +475,7 @@ def simulated_annealing(
             proposal[pos] = new_code
 
             proposal_energy = compute_breakdown(builder, proposal, weights)["total"]
-            proposal_objective = objective_fn(proposal) if objective_fn else proposal_energy
+            proposal_objective = proposal_energy + penalty_fn(proposal) if penalty_fn else proposal_energy
             delta = proposal_objective - current_objective
             if delta <= 0 or rng.random() < math.exp(-delta / temperature):
                 current = proposal
@@ -679,6 +672,9 @@ def _run_specificity_search(
     return final_payload
 
 
+SPECIFICITY_N_RANDOM = 3000
+
+
 def _build_specificity_candidate_payload(
     sequence: str,
     *,
@@ -686,6 +682,10 @@ def _build_specificity_candidate_payload(
     amino_acids: List[str],
     target_env: Dict[str, Any],
     off_target_envs: List[Dict[str, Any]],
+    target_builder: HamiltonianBuilder,
+    off_builders: List[HamiltonianBuilder],
+    target_ref: Dict[str, Any],
+    off_refs: List[Dict[str, Any]],
     weights: Dict[str, float],
     lambda_balance: float,
     steps: int,
@@ -695,30 +695,14 @@ def _build_specificity_candidate_payload(
     best_target_energy: float,
     best_off_energies: List[float],
 ) -> Dict[str, Any]:
-    n_decoys_eval = 3000
-    n_random = 3000
-    target_score = score_sequence(
-        sequence,
-        target_env,
-        amino_acids,
-        weights,
-        n_decoys=n_decoys_eval,
-        n_random=n_random,
-        seed=seed + 1001,
+    # Se puntúa con los mismos builders que la búsqueda: las energías mostradas son las optimizadas.
+    target_score = score_sequence_with_builder(
+        sequence, target_builder, target_env, amino_acids, weights, target_ref, SPECIFICITY_N_RANDOM
     )
-    off_target_scores = []
-    for idx, env in enumerate(off_target_envs):
-        off_target_scores.append(
-            score_sequence(
-                sequence,
-                env,
-                amino_acids,
-                weights,
-                n_decoys=n_decoys_eval,
-                n_random=n_random,
-                seed=seed + 1101 + idx,
-            )
-        )
+    off_target_scores = [
+        score_sequence_with_builder(sequence, builder, env, amino_acids, weights, ref, SPECIFICITY_N_RANDOM)
+        for builder, env, ref in zip(off_builders, off_target_envs, off_refs)
+    ]
 
     worst_off_target = min(off_target_scores, key=lambda item: item["energy"])
     specificity_design = {
@@ -836,11 +820,10 @@ def design_family_stream(
     }
 
     for run_idx in range(total_runs):
-        objective_fn = None
+        penalty_fn = None
         if accepted_codes:
-            objective_fn = lambda codes, prior=accepted_codes: (
-                compute_breakdown(builder, codes, w)["total"]
-                + diversity_penalty(codes, prior, min_distance=min_distance, penalty_weight=penalty_weight)
+            penalty_fn = lambda codes, prior=list(accepted_codes): diversity_penalty(
+                codes, prior, min_distance=min_distance, penalty_weight=penalty_weight
             )
         candidate = simulated_annealing(
             builder,
@@ -849,7 +832,7 @@ def design_family_stream(
             steps=steps,
             restarts=restarts,
             seed=seed + run_idx,
-            objective_fn=objective_fn,
+            penalty_fn=penalty_fn,
         )
         sequence = candidate["sequence"]
         yield {
@@ -921,37 +904,7 @@ def compare_environments(
     env_a = resolve_environment(environment_a)
     env_b = resolve_environment(environment_b)
     scored_a = score_sequence(sequence, env_a, amino_acids, w, n_decoys=n_decoys, seed=seed)
-    scored_b = score_sequence(sequence, env_b, amino_acids, w, n_decoys=n_decoys, seed=seed + 1)
-    return {
-        "sequence": sequence.upper(),
-        "environment_a": scored_a,
-        "environment_b": scored_b,
-        "energy_gap": abs(scored_a["energy"] - scored_b["energy"]),
-        "z_score_gap": abs(scored_a["z_score"] - scored_b["z_score"]),
-        "joint_energy": scored_a["energy"] + scored_b["energy"],
-    }
-
-
-def compare_environments_fixed(
-    sequence: str,
-    environment_a: Dict[str, Any],
-    environment_b: Dict[str, Any],
-    residues: Optional[List[str] | str] = None,
-    weights: Optional[Dict[str, float]] = None,
-    n_decoys: int = 2000,
-    n_random: int = 500,
-    seed: int = 42,
-) -> Dict[str, Any]:
-    amino_acids = normalize_residues(residues)
-    w = normalize_weights(weights)
-    env_a = resolve_environment(environment_a)
-    env_b = resolve_environment(environment_b)
-    builder_a = build_builder(len(sequence), amino_acids, env_a, n_decoys=n_decoys, zscore_seed=seed)
-    builder_b = build_builder(len(sequence), amino_acids, env_b, n_decoys=n_decoys, zscore_seed=seed + 1)
-    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=seed + 17)
-    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=seed + 18)
-    scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, n_random)
-    scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, n_random)
+    scored_b = score_sequence(sequence, env_b, amino_acids, w, n_decoys=n_decoys, seed=seed)
     return {
         "sequence": sequence.upper(),
         "environment_a": scored_a,
@@ -988,7 +941,7 @@ def optimize_penetration(
     best_result: Optional[Dict[str, Any]] = None
     best_percent: Optional[int] = None
 
-    for idx, percent in enumerate(range(percent_min, percent_max + 1, percent_step)):
+    for percent in range(percent_min, percent_max + 1, percent_step):
         env = penetration_percent_to_environment(percent, str(env_base["preset"]))
         scored = score_sequence(
             sequence=sequence,
@@ -997,7 +950,7 @@ def optimize_penetration(
             weights=w,
             n_decoys=n_decoys,
             n_random=n_random,
-            seed=seed + idx,
+            seed=seed,
         )
         profile.append(
             {
@@ -1100,16 +1053,20 @@ def cross_environment_design(
 
     assert best_codes is not None
     sequence = codes_to_seq(best_codes, amino_acids)
-    comparison = compare_environments_fixed(
-        sequence,
-        env_a,
-        env_b,
-        amino_acids,
-        w,
-        n_decoys=n_decoys,
-        n_random=500,
-        seed=seed,
-    )
+    # El informe usa los mismos builders (misma calibración) que la optimización.
+    n_random = 500
+    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=seed + 17)
+    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=seed + 17)
+    scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, n_random)
+    scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, n_random)
+    comparison = {
+        "sequence": sequence,
+        "environment_a": scored_a,
+        "environment_b": scored_b,
+        "energy_gap": abs(scored_a["energy"] - scored_b["energy"]),
+        "z_score_gap": abs(scored_a["z_score"] - scored_b["z_score"]),
+        "joint_energy": scored_a["energy"] + scored_b["energy"],
+    }
     comparison["cross_design"] = {
         "lambda_gap": lambda_gap,
         "objective": best_obj,
@@ -1202,6 +1159,8 @@ def design_specificity_stream(
         raise ValueError("lambda_balance must lie between 0 and 1.")
     num_sequences = max(1, int(num_sequences))
     total_restart_budget = max(1, int(restarts))
+    if num_sequences > total_restart_budget:
+        raise ValueError("num_sequences cannot exceed restarts: each candidate needs at least one restart.")
     restarts_per_attempt = max(1, total_restart_budget // num_sequences)
     total_attempts = max(1, total_restart_budget // restarts_per_attempt)
 
@@ -1224,9 +1183,11 @@ def design_specificity_stream(
 
     builder_specs = [("target", target_env)] + [(f"off_target_{idx + 1}", env) for idx, env in enumerate(off_target_envs)]
     built: Dict[str, HamiltonianBuilder] = {}
+    refs: Dict[str, Dict[str, Any]] = {}
     total_builders = len(builder_specs)
     for idx, (label, env) in enumerate(builder_specs, start=1):
         built[label] = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
+        refs[label] = random_reference(built[label], amino_acids, w, n_random=SPECIFICITY_N_RANDOM, seed=seed + 17)
         yield {
             "type": "phase",
             "payload": {
@@ -1304,6 +1265,10 @@ def design_specificity_stream(
             amino_acids=amino_acids,
             target_env=target_env,
             off_target_envs=off_target_envs,
+            target_builder=target_builder,
+            off_builders=off_builders,
+            target_ref=refs["target"],
+            off_refs=[refs[f"off_target_{idx + 1}"] for idx in range(len(off_target_envs))],
             weights=w,
             lambda_balance=lambda_balance,
             steps=steps,

@@ -8,7 +8,7 @@ const HYDRO_SCALE = {
   D: -0.77, E: -0.64, K: -0.99, R: -1.01, H: 0.13,
   G: 0.00, A: 0.31, V: 1.22, L: 1.70, I: 1.80,
   P: 0.72, M: 1.23, F: 1.79, W: 2.25, Y: 0.96,
-  T: -0.04, S: 0.26, C: 1.54, N: -0.60, Q: -0.22,
+  T: 0.26, S: -0.04, C: 1.54, N: -0.60, Q: -0.22,
 };
 const REFERENCE_PEPTIDES = {
   eaaak3: {
@@ -417,6 +417,19 @@ function loadingNode() {
   return $('#loading-template').content.firstElementChild.cloneNode(true);
 }
 
+function errorDetail(data, fallback) {
+  const detail = data && data.detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      const field = Array.isArray(item?.loc) ? item.loc.filter((part) => part !== 'body').join('.') : '';
+      const message = String(item?.msg || 'Invalid value');
+      return field ? `${field}: ${message}` : message;
+    });
+    return messages.join('; ') || fallback;
+  }
+  return detail ? String(detail) : fallback;
+}
+
 async function postJSON(url, payload) {
   const res = await fetch(url, {
     method: 'POST',
@@ -426,8 +439,9 @@ async function postJSON(url, payload) {
     },
     body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Request failed');
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorDetail(data, `Request failed (HTTP ${res.status})`));
+  if (data === null) throw new Error('The server returned an invalid response.');
   if (url !== '/api/visit') {
     refreshUsageCounters().catch(() => {});
   }
@@ -445,8 +459,8 @@ async function postNDJSON(url, payload, onMessage, options = {}) {
     signal: options.signal,
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || 'Streaming request failed');
+    const data = await res.json().catch(() => null);
+    throw new Error(errorDetail(data, `Streaming request failed (HTTP ${res.status})`));
   }
   if (!res.body) {
     throw new Error('Streaming not supported by this browser');
@@ -515,7 +529,7 @@ async function refreshUsageCounters(logVisit = false) {
 }
 
 function escapeHtml(text) {
-  return text.replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+  return String(text ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
 function downloadJson(filename, data) {
@@ -1433,7 +1447,7 @@ function bindForm(formId, resultId, builder, renderer) {
       const data = await builder(new FormData(form));
       result.innerHTML = renderer(data);
     } catch (error) {
-      result.innerHTML = `<div class="error">${error.message}</div>`;
+      result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
     }
   });
 }
@@ -1640,7 +1654,7 @@ specificityForm.addEventListener('submit', async (event) => {
         });
       }
     } else {
-      specificityResult.innerHTML = `<div class="error">${error.message}</div>`;
+      specificityResult.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
     }
   } finally {
     specificityController = null;
@@ -1744,6 +1758,6 @@ familyForm.addEventListener('submit', async (event) => {
       refresh();
     });
   } catch (error) {
-    familyResult.innerHTML = `<div class="error">${error.message}</div>`;
+    familyResult.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
   }
 });

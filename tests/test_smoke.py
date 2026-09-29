@@ -1,7 +1,7 @@
 """Offline runtime checks, not validation of the scientific model.
 
 Run from the repository root: python -m unittest discover -s tests -v -b
-The expected failure covers the matrix-indexing issue in KNOWN_ISSUES.md.
+Parameter-table checks verify label-based indexing, not parameter provenance.
 """
 
 import io
@@ -82,6 +82,7 @@ class WebSmokeTests(unittest.TestCase):
         self.assertEqual(result["length"], 4)
         self.assertTrue(set(result["sequence"]) <= set(self.common["residues"]))
         self.assertAlmostEqual(result["energy"], result["breakdown"]["total"])
+        self.assertEqual(result["wheel"][0]["angle_deg"] % 360, result["environment"]["wheel_phase_deg"] % 360)
         self.assertGreater(result["random_reference"]["std"], 0)
         self.assertLessEqual(0, result["percentile_lower_is_better"])
         self.assertLessEqual(result["percentile_lower_is_better"], 100)
@@ -168,32 +169,237 @@ class WebSmokeTests(unittest.TestCase):
             self.assertTrue(all(math.isfinite(float(x)) for x in atom.coord))
 
     def test_request_limits(self):
+        specificity = {"target_environment": self.env_a, "off_target_environments": [self.env_b]}
         invalid = [
             ("/api/score", {"sequence": ""}),
+            ("/api/score", {"sequence": "ALXD"}),
+            ("/api/score", {"sequence": "ALKD", "residues": ["A", "L", "K", "D", "B"]}),
+            ("/api/score", {"sequence": "ALKD", "environment": {"preset": "interfacial_unknown"}}),
+            ("/api/score", {"sequence": "ALKD", "environment": {"membrane_charge": "negative"}}),
+            ("/api/score", {"sequence": "ALKD", "environment": {"wheel_halfwidth_deg": 1000}}),
+            ("/api/score", {"sequence": "ALKD", "weights": {"lambda_env": -1}}),
+            ("/api/score", {"sequence": "ALKD", "seed": -1}),
             ("/api/design", {"length": 41}),
             ("/api/design", {"residues": ["A"]}),
             ("/api/optimal-penetration", {"sequence": "ALKD", "environment": self.env_b}),
+            # Cross-field checks must run even when the optional seed is omitted.
+            ("/api/optimal-penetration", {"sequence": "ALKD", "environment": self.env_a, "percent_step": 20}),
+            ("/api/specificity-design", {**specificity, "off_target_environments": [self.env_a, self.env_b]}),
+            ("/api/specificity-design", {**specificity, "off_target_environments": [
+                {"preset": "homogeneous_polar", "wheel_halfwidth_deg": float(angle)} for angle in range(5)
+            ]}),
+            ("/api/specificity-design", {**specificity, "num_sequences": 5, "restarts": 4}),
+            ("/api/score", {"sequence": "ALKD", "n_decoy": 100}),
         ]
         for route, payload in invalid:
             with self.subTest(route=route, payload=payload):
                 self.assertEqual(self.client.post(route, json=payload).status_code, 422)
+
+    def test_non_finite_numbers_are_rejected(self):
+        bodies = [
+            ("/api/score", '{"sequence": "ALKD", "weights": {"lambda_env": NaN}}'),
+            ("/api/score", '{"sequence": "ALKD", "environment": {"wheel_halfwidth_deg": Infinity}}'),
+            ("/api/cross-design", '{"environment_a": {}, "environment_b": {}, "lambda_gap": NaN}'),
+        ]
+        for route, body in bodies:
+            with self.subTest(route=route, body=body):
+                response = self.client.post(route, content=body, headers={"Content-Type": "application/json"})
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertTrue(response.json()["detail"])
+
+    def test_request_size_and_security_headers(self):
+        response = self.client.post("/api/score", content=b"{" + b" " * 70000 + b"}",
+                                    headers={"Content-Type": "application/json"})
+        self.assertEqual(response.status_code, 413)
+        page = self.client.get("/")
+        self.assertEqual(page.headers["x-content-type-options"], "nosniff")
+        self.assertIn("frame-ancestors 'none'", page.headers["content-security-policy"])
+
+    def test_busy_server_and_time_limit(self):
+        from app import main
+
+        slots = [main._job_slots.acquire(blocking=False) for _ in range(main.MAX_CONCURRENT_JOBS)]
+        try:
+            self.assertTrue(all(slots))
+            self.assertEqual(self.client.post("/api/design", json=self.design).status_code, 503)
+            with self.client.stream("POST", "/api/design-family-stream", json={**self.design, "family_size": 2}) as response:
+                events = [json.loads(line) for line in response.iter_lines() if line]
+            self.assertEqual([event["type"] for event in events], ["error"])
+        finally:
+            for _ in slots:
+                main._job_slots.release()
+
+        previous = main.MAX_JOB_SECONDS
+        main.MAX_JOB_SECONDS = 0.0
+        try:
+            response = self.client.post("/api/design", json=self.design)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("time limit", response.json()["detail"])
+            with self.client.stream("POST", "/api/design-family-stream", json={**self.design, "family_size": 2}) as response:
+                events = [json.loads(line) for line in response.iter_lines() if line]
+            self.assertEqual(events[-1]["type"], "error")
+            self.assertIn("time limit", events[-1]["detail"])
+        finally:
+            main.MAX_JOB_SECONDS = previous
+        self.assertEqual(self.client.post("/api/design", json=self.design).status_code, 200)
+
+    def test_usage_logging_enabled(self):
+        """Logging is configured at import time, so it is exercised in a fresh interpreter."""
+        import subprocess
+        import sys
+
+        script = """
+import json, pathlib
+from fastapi.testclient import TestClient
+from app import main
+client = TestClient(main.app)
+headers = {"X-Anonymous-Id": "visitor-1"}
+assert client.post("/api/visit", headers=headers).json()["total_visits"] == 1
+assert client.post("/api/visit", headers={"X-Anonymous-Id": "visitor-2"}).json()["unique_visitors"] == 2
+payload = {"sequence": "ALKD", "residues": ["A", "L", "K", "D"], "n_decoys": 100, "n_random": 100}
+assert client.post("/api/score", json=payload).status_code == 200
+assert client.post("/api/score", json={**payload, "sequence": "ALKE"}).status_code == 400
+assert client.get("/api/usage-metrics").json() == {"total_visits": 2, "unique_visitors": 2, "total_runs": 1}
+assert client.get("/api/health").status_code == 200, "client errors must not degrade health"
+main.score_sequence = lambda **kwargs: 1 / 0
+assert client.post("/api/score", json=payload).status_code == 500
+health = client.get("/api/health")
+assert health.status_code == 503 and health.json()["recent"]["failing_endpoints"] == {"score": 1}
+log = pathlib.Path(main.USAGE_LOG_PATH).read_text()
+assert "ALKD" not in log and "testclient" not in log
+assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
+"""
+        env = {**os.environ, "HELIX_USAGE_LOGGING": "1",
+               "HELIX_VAR_DIR": str(Path(self.temporary.name) / "var-enabled")}
+        completed = subprocess.run([sys.executable, "-c", script], cwd=Path(__file__).resolve().parents[1],
+                                   env=env, capture_output=True, text=True, timeout=300)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_usage_logging_disabled(self):
         self.assertEqual(self.client.post("/api/visit").status_code, 200)
         self.assertEqual(self.client.get("/api/usage-metrics").status_code, 200)
         self.assertFalse((Path(self.temporary.name) / "var" / "usage_events.jsonl").exists())
 
-    @unittest.expectedFailure
-    def test_known_neighbor_score_alphabet_order_invariance(self):
-        """Raw chemical scores should not change when only alphabet order changes."""
-        alphabet = self.engine.DEFAULT_ALPHABET_16
-        reordered = ["P"] + [aa for aa in alphabet if aa != "P"]
+    def test_raw_terms_do_not_depend_on_alphabet_order(self):
+        """The same chemical sequence has the same raw terms for any alphabet order."""
+        alphabet = list(self.engine.DEFAULT_ALPHABET_16)
+        orders = [alphabet, alphabet[::-1], alphabet[5:] + alphabet[:5], sorted(alphabet)]
         env = self.engine.resolve_environment(self.env_a)
-        values = []
-        for residues in (alphabet, reordered):
-            builder = self.engine.build_builder(4, residues, env, n_decoys=100)
-            values.append(builder._raw_helix_neigh(self.engine.seq_to_codes("PPPP", residues)))
-        self.assertAlmostEqual(values[0], values[1])
+        terms = ("_raw_helix_local", "_raw_env_pol", "_raw_env_chg", "_raw_pw_int",
+                 "_raw_electrostatic", "_raw_helix_neigh")
+        for sequence in ("PPPP", "AEKLWKEAGH", "DKTSQEMFYVAL"):
+            values = []
+            for residues in orders:
+                builder = self.engine.build_builder(len(sequence), residues, env, n_decoys=100)
+                codes = self.engine.seq_to_codes(sequence, residues)
+                values.append([getattr(builder, term)(codes) for term in terms])
+            for other in values[1:]:
+                with self.subTest(sequence=sequence):
+                    for expected, observed in zip(values[0], other):
+                        self.assertAlmostEqual(expected, observed, places=12)
+
+    def test_neighbor_tables_are_indexed_by_residue_label(self):
+        """Entries are looked up by residue label (row: residue i, column: residue i+k)."""
+        residues = ["K", "P", "E", "A", "C", "L"]
+        builder = self.engine.build_builder(6, residues, self.engine.resolve_environment(self.env_a), n_decoys=100)
+        index = {aa: i for i, aa in enumerate(residues)}
+        # Values copied from the parameter tables in Code/core/resources.
+        self.assertAlmostEqual(builder.M1[index["A"], index["A"]], -math.log(2.734))
+        self.assertAlmostEqual(builder.M1[index["K"], index["E"]], -math.log(1.490))
+        self.assertAlmostEqual(builder.M3[index["E"], index["K"]], -0.150)
+        self.assertAlmostEqual(builder.M4[index["E"], index["K"]], -0.420)
+        self.assertAlmostEqual(builder.M4[index["K"], index["E"]], 0.100)
+        self.assertAlmostEqual(builder.mj_matrix[index["L"], index["K"]], builder.mj_matrix[index["K"], index["L"]])
+        for matrix in (builder.M3, builder.M4):
+            self.assertFalse(matrix[index["C"]].any())
+            self.assertFalse(matrix[:, index["P"]].any())
+
+    def test_corrupt_calibration_cache_is_recomputed(self):
+        env = self.engine.resolve_environment(self.env_a)
+        residues = list(self.engine.DEFAULT_ALPHABET_16)
+        with tempfile.TemporaryDirectory(prefix="helix-cache-") as cache_dir:
+            first = self.engine.build_builder(5, residues, env, n_decoys=100, stats_cache_dir=cache_dir)
+            cache_path = first._stats_cache_path(100)
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                handle.write('{"stats": {"helix_local": {"mu"')
+            second = self.engine.build_builder(5, residues, env, n_decoys=100, stats_cache_dir=cache_dir)
+            self.assertEqual(first.stats, second.stats)
+            with open(cache_path, encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["metadata"]["n_decoys"], 100)
+            self.assertEqual([name for name in os.listdir(cache_dir) if name.endswith(".tmp")], [])
+
+    def test_literature_residue_scales(self):
+        """Fauchère–Pliska (1983) hydrophobicities and Pace–Scholtz (1998) helix propensities."""
+        from core import hamiltonian_builder as model
+
+        fauchere_pliska = {
+            "A": 0.31, "R": -1.01, "N": -0.60, "D": -0.77, "C": 1.54, "Q": -0.22, "E": -0.64,
+            "G": 0.00, "H": 0.13, "I": 1.80, "L": 1.70, "K": -0.99, "M": 1.23, "F": 1.79,
+            "P": 0.72, "S": -0.04, "T": 0.26, "W": 2.25, "Y": 0.96, "V": 1.22,
+        }
+        pace_scholtz = {
+            "A": 0.00, "L": 0.21, "R": 0.21, "M": 0.24, "K": 0.26, "Q": 0.39, "E": 0.40,
+            "I": 0.41, "W": 0.49, "S": 0.50, "Y": 0.53, "F": 0.54, "V": 0.61, "H": 0.61,
+            "N": 0.65, "T": 0.66, "C": 0.68, "D": 0.69, "G": 1.00, "P": 3.16,
+        }
+        self.assertEqual(model.FAUCHERE_PLISKA_HYDROPHOBICITY, fauchere_pliska)
+        self.assertEqual(model.PACE_SCHOLTZ_HELIX_PROPENSITY, pace_scholtz)
+        self.assertIs(self.engine.HYDROPHOBICITY_FP, model.FAUCHERE_PLISKA_HYDROPHOBICITY)
+        script = (Path(__file__).resolve().parents[1] / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        block = re.search(r"const HYDRO_SCALE = \{(.*?)\};", script, re.S).group(1)
+        browser_scale = {aa: float(value) for aa, value in re.findall(r"([A-Z]):\s*(-?[0-9.]+)", block)}
+        self.assertEqual(browser_scale, fauchere_pliska)
+
+    def test_helix_pair_term_favors_helix_forming_pairs(self):
+        env = self.engine.resolve_environment(self.env_b)
+        residues = ["A", "E", "G", "L", "P"]
+        builder = self.engine.build_builder(10, residues, env, n_decoys=100)
+        neigh = {aa: builder._raw_helix_neigh(self.engine.seq_to_codes(aa * 10, residues)) for aa in residues}
+        self.assertLess(neigh["A"], neigh["G"])
+        self.assertLess(neigh["E"], neigh["G"])
+        self.assertLess(neigh["L"], neigh["P"])
+
+    def test_random_sequences_are_not_favored_by_phase_alignment(self):
+        """Query, calibration decoys and reference sequences share the same orientation rule."""
+        import numpy as np
+
+        residues = list(self.engine.DEFAULT_ALPHABET_16)
+        rng = np.random.default_rng(7)
+        percentiles = []
+        for _ in range(40):
+            sequence = "".join(rng.choice(residues, size=12))
+            result = self.engine.score_sequence(
+                sequence, self.env_a, residues, n_decoys=200, n_random=200, seed=42
+            )
+            percentiles.append(result["percentile_lower_is_better"])
+        self.assertGreater(sum(percentiles) / len(percentiles), 35)
+        self.assertLess(sum(percentiles) / len(percentiles), 65)
+
+    def test_workflows_report_consistent_energies(self):
+        designed = self.post("/api/design", self.design)
+        rescored = self.post("/api/score", {**self.common, "sequence": designed["sequence"], "n_random": 500})
+        self.assertAlmostEqual(designed["energy"], rescored["energy"], places=9)
+        self.assertAlmostEqual(designed["z_score"], rescored["z_score"], places=9)
+
+        environments = {"environment_a": self.env_a, "environment_b": self.env_b}
+        cross = self.post("/api/cross-design", {**self.design, **environments})
+        self.assertAlmostEqual(cross["cross_design"]["energy_a"], cross["environment_a"]["energy"], places=9)
+        self.assertAlmostEqual(cross["cross_design"]["energy_b"], cross["environment_b"]["energy"], places=9)
+        compared = self.post("/api/compare", {**self.common, **environments, "sequence": cross["sequence"]})
+        self.assertAlmostEqual(compared["environment_a"]["energy"], cross["environment_a"]["energy"], places=9)
+        self.assertAlmostEqual(compared["environment_b"]["energy"], cross["environment_b"]["energy"], places=9)
+
+    def test_parameter_tables_have_unique_residue_labels(self):
+        from data_loaders import energy_matrix_loader as loader
+
+        canonical = set("ACDEFGHIKLMNPQRSTVWY")
+        for load in (loader._load_energy_matrix_file, loader._load_first_neighbors_matrix_file,
+                     loader._load_third_neighbors_matrix_file, loader._load_fourth_neighbors_matrix_file):
+            with self.subTest(table=load.__name__):
+                matrix, symbols = load()
+                self.assertEqual(len(symbols), 20)
+                self.assertEqual(set(symbols), canonical)
+                self.assertEqual(matrix.shape, (20, 20))
 
 
 if __name__ == "__main__":
