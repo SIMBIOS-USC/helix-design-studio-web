@@ -158,7 +158,7 @@ const REFERENCE_PEPTIDES = {
   kalp17: {
     name: 'KALP17',
     category: 'Transmembrane/apolar model helices',
-    sequence: 'GKKLALALALALALALKK',
+    sequence: 'GKKLALALALALALKKA',
     family: 'model membrane-spanning helix',
     profile: {
       water: 'unfavorable in water',
@@ -198,6 +198,10 @@ function referencePeptideOptionsHtml() {
   `;
 }
 
+function forgetAnonymousUserId() {
+  try { window.localStorage.removeItem(ANON_STORAGE_KEY); } catch (_) { /* Storage is optional. */ }
+}
+
 function getAnonymousUserId() {
   if (!usageLoggingEnabled) return null;
   let id;
@@ -215,11 +219,6 @@ function getAnonymousUserId() {
 function usageHeaders() {
   const id = getAnonymousUserId();
   return id ? { 'X-Anonymous-Id': id } : {};
-}
-
-function residuesFromSequence(sequence) {
-  const present = new Set(String(sequence || '').toUpperCase().replace(/[^A-Z]/g, '').split(''));
-  return STANDARD_RESIDUE_ORDER.filter((aa) => present.has(aa)).join(',');
 }
 
 function renderReferenceNote(reference) {
@@ -246,7 +245,7 @@ function renderReferenceNote(reference) {
       `).join('')}
     </div>
     <p>${reference.note}</p>
-    <p class="reference-note-foot">Literature-inspired qualitative profile. The sequence is auto-filled, but the random-reference background keeps the default alphabet unless you change it manually.</p>
+    <p class="reference-note-foot">Literature-inspired qualitative profile. The sequence is auto-filled; the allowed residues must include all of its residues.</p>
   `;
 }
 
@@ -276,6 +275,12 @@ function bindReferencePeptideSelectors() {
     };
 
     select.addEventListener('change', sync);
+    sequenceField.addEventListener('input', () => {
+      if (select.value && sequenceField.value.trim().toUpperCase() !== REFERENCE_PEPTIDES[select.value]?.sequence) {
+        select.value = '';
+        sync();
+      }
+    });
     sync();
   });
 }
@@ -296,11 +301,19 @@ function penetrationPercentToHalfWidth(percent) {
 }
 
 function buildEnvironmentFromPresetAndPenetration(preset, penetrationPercent) {
-  const environment = { preset };
-  if (isInterfacialPreset(preset)) {
-    environment.wheel_halfwidth_deg = penetrationPercentToHalfWidth(penetrationPercent ?? 50);
-  }
-  return environment;
+  if (!isInterfacialPreset(preset)) return { preset };
+  // Same mapping as the server-side penetration scan: the end points are the homogeneous media.
+  const percent = Math.max(0, Math.min(100, Number(penetrationPercent ?? 50)));
+  if (percent <= 0) return { preset: 'homogeneous_polar' };
+  if (percent >= 100) return { preset: 'homogeneous_apolar' };
+  return { preset, wheel_halfwidth_deg: penetrationPercentToHalfWidth(percent) };
+}
+
+function penetrationDescription(percent) {
+  const value = Number(percent);
+  if (value <= 0) return '0% (homogeneous polar medium)';
+  if (value >= 100) return '100% (homogeneous apolar medium)';
+  return `${value}% (apolar sector half-width ${penetrationPercentToHalfWidth(value).toFixed(0)}°)`;
 }
 
 function buildEnvironmentFromFormData(fd, presetFieldName, penetrationFieldName) {
@@ -319,7 +332,7 @@ function syncPenetrationControls() {
   $$('.penetration-slider').forEach((slider) => {
     const scope = slider.dataset.rangeOutput;
     const target = $(`[data-range-value="${scope}"]`);
-    if (target) target.textContent = `${slider.value}%`;
+    if (target) target.textContent = penetrationDescription(slider.value);
   });
   syncSpecificityControls();
 }
@@ -346,66 +359,37 @@ function syncSpecificityControls() {
   specificityCheckboxes.forEach((input) => {
     const option = input.closest('.selector-option');
     const sameAsTarget = input.value === targetPreset;
-    input.disabled = sameAsTarget;
-    if (sameAsTarget) {
+    if (sameAsTarget && !input.disabled) {
+      input.dataset.wasChecked = input.checked ? 'true' : 'false';
       input.checked = false;
-      option?.classList.add('selector-option-disabled');
-    } else {
-      option?.classList.remove('selector-option-disabled');
+    } else if (!sameAsTarget && input.disabled) {
+      input.checked = input.dataset.wasChecked === 'true';
     }
+    input.disabled = sameAsTarget;
+    option?.classList.toggle('selector-option-disabled', sameAsTarget);
   });
 }
 
-function syncPenetrationScanControls() {
-  $$('[data-scan-range]').forEach((group) => {
-    const scope = group.dataset.scanRange;
-    const minSlider = $('[data-scan-bound="min"]', group);
-    const maxSlider = $('[data-scan-bound="max"]', group);
-    const minLabel = $('[data-scan-range-value="min"]', group);
-    const maxLabel = $('[data-scan-range-value="max"]', group);
-    const countLabel = $(`[data-scan-count="${scope}"]`);
-    if (!minSlider || !maxSlider) return;
-
-    const step = Number($('[name="percent_step"]', group)?.value || 5);
-    let minVal = Number(minSlider.value || 0);
-    let maxVal = Number(maxSlider.value || 100);
-
-    if (document.activeElement === minSlider && minVal > maxVal) {
-      maxVal = minVal;
-      maxSlider.value = String(maxVal);
-    } else if (document.activeElement === maxSlider && maxVal < minVal) {
-      minVal = maxVal;
-      minSlider.value = String(minVal);
-    } else if (minVal > maxVal) {
-      maxVal = minVal;
-      maxSlider.value = String(maxVal);
-    }
-
-    if (minLabel) minLabel.textContent = `${minVal}%`;
-    if (maxLabel) maxLabel.textContent = `${maxVal}%`;
-    if (countLabel) {
-      const nPoints = Math.floor((maxVal - minVal) / step) + 1;
-      countLabel.textContent = `${nPoints} point${nPoints === 1 ? '' : 's'}`;
-    }
+function activatePanel(btn) {
+  $$('.nav-btn').forEach((b) => {
+    b.classList.remove('active');
+    b.removeAttribute('aria-current');
   });
+  $$('.panel').forEach((p) => p.classList.remove('active'));
+  btn.classList.add('active');
+  btn.setAttribute('aria-current', 'page');
+  $(`#panel-${btn.dataset.panel}`).classList.add('active');
 }
-
-$$('.nav-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    $$('.nav-btn').forEach((b) => b.classList.remove('active'));
-    $$('.panel').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    $(`#panel-${btn.dataset.panel}`).classList.add('active');
-  });
-});
+$$('.nav-btn').forEach((btn) => btn.addEventListener('click', () => activatePanel(btn)));
+const initialPanelButton = $('.nav-btn.active');
+if (initialPanelButton) activatePanel(initialPanelButton);
+$$('.result').forEach((node) => node.setAttribute('aria-live', 'polite'));
 $$('.env-preset').forEach((select) => select.addEventListener('change', syncPenetrationControls));
 $$('.penetration-slider').forEach((slider) => slider.addEventListener('input', syncPenetrationControls));
 $$('input[name="off_target_preset"]').forEach((checkbox) => checkbox.addEventListener('change', syncPenetrationControls));
-$$( '.scan-range-slider').forEach((slider) => slider.addEventListener('input', syncPenetrationScanControls));
 $$('.lambda-balance-slider').forEach((slider) => slider.addEventListener('input', syncLambdaBalanceControls));
 syncPenetrationControls();
 syncSpecificityControls();
-syncPenetrationScanControls();
 syncLambdaBalanceControls();
 bindReferencePeptideSelectors();
 
@@ -430,7 +414,7 @@ function errorDetail(data, fallback) {
   return detail ? String(detail) : fallback;
 }
 
-async function postJSON(url, payload) {
+async function postJSON(url, payload, options = {}) {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -438,6 +422,7 @@ async function postJSON(url, payload) {
       ...usageHeaders(),
     },
     body: JSON.stringify(payload),
+    signal: options.signal,
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorDetail(data, `Request failed (HTTP ${res.status})`));
@@ -479,12 +464,29 @@ async function postNDJSON(url, payload, onMessage, options = {}) {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      onMessage(JSON.parse(trimmed));
+      onMessage(parseStreamLine(trimmed));
     }
   }
   if (buffer.trim()) {
-    onMessage(JSON.parse(buffer.trim()));
+    onMessage(parseStreamLine(buffer.trim()));
   }
+}
+
+function parseStreamLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch (_) {
+    throw new Error('Received an incomplete response from the server.');
+  }
+}
+
+function compareSpecificityCandidates(a, b) {
+  // Same ordering as the server: objective, larger ΔZ, lower target Z, sequence.
+  const objective = (item) => Math.round(Number(item.specificity_design?.objective || 0) * 1e8) / 1e8;
+  return objective(a) - objective(b)
+    || Number(b.specificity_design?.z_score_margin || 0) - Number(a.specificity_design?.z_score_margin || 0)
+    || Number(a.target_environment?.z_score || 0) - Number(b.target_environment?.z_score || 0)
+    || String(a.sequence).localeCompare(String(b.sequence));
 }
 
 async function registerVisitCounter() {
@@ -501,7 +503,10 @@ async function registerVisitCounter() {
 async function refreshUsageCounters(logVisit = false) {
   const counters = document.getElementById('footer-stats');
   if (counters) counters.style.display = usageLoggingEnabled ? '' : 'none';
-  if (!usageLoggingEnabled) return;
+  if (!usageLoggingEnabled) {
+    forgetAnonymousUserId();
+    return;
+  }
   const totalEl = document.getElementById('visit-counter-total');
   const uniqueEl = document.getElementById('visit-counter-unique');
   const runsEl = document.getElementById('visit-counter-runs');
@@ -557,6 +562,12 @@ function downloadText(filename, text, type = 'text/plain') {
 }
 
 let viewerCounter = 0;
+let svgIdCounter = 0;
+
+function nextSvgId(prefix) {
+  svgIdCounter += 1;
+  return `${prefix}-${svgIdCounter}`;
+}
 
 function nextViewerId(prefix = 'pdb-viewer') {
   viewerCounter += 1;
@@ -573,11 +584,24 @@ function ensure3Dmol() {
   });
 }
 
+let activePdbViewer = null;
+
+function releasePdbViewer() {
+  if (!activePdbViewer) return;
+  try {
+    const canvas = activePdbViewer.getCanvas?.();
+    const gl = canvas?.getContext('webgl2') || canvas?.getContext('webgl');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch (_) { /* The old viewer is being discarded anyway. */ }
+  activePdbViewer = null;
+}
+
 async function mountPdbViewer(containerId, pdb) {
   const container = document.getElementById(containerId);
   if (!container) return;
   try {
     const $3Dmol = await ensure3Dmol();
+    releasePdbViewer();
     const viewer = $3Dmol.createViewer(container, {
       backgroundColor: '#fbf6ec',
     });
@@ -597,13 +621,14 @@ async function mountPdbViewer(containerId, pdb) {
     );
     viewer.addStyle(
       { atom: ['N', 'C', 'O', 'OXT'] },
-      { stick: { color: '#7c8e97', radius: 0.08, opacity: 0.32 } },
+      { stick: { color: '#7c8e97', radius: 0.08 } },
     );
     viewer.zoomTo();
     viewer.zoom(1.12);
     viewer.rotate(90, 'y');
     viewer.rotate(10, 'z');
     viewer.render();
+    activePdbViewer = viewer;
   } catch (error) {
     container.innerHTML = `<div class="viewer-error">${escapeHtml(error.message)}</div>`;
   }
@@ -617,7 +642,7 @@ function wheelPoint(thetaDeg, radius, cx, cy) {
   };
 }
 
-function polarLabelSvg(cx, cy, radius, halfWidth, yBoundary) {
+function polarLabelSvg(cx, cy, radius, halfWidth) {
   const badge = (label, y, fill, stroke, textFill) => `
     <g>
       <rect x="${cx - 58}" y="${y - 18}" rx="13" ry="13" width="116" height="28" fill="${fill}" stroke="${stroke}" />
@@ -657,9 +682,10 @@ function hydrophobicMomentArrowSvg(nodeGeometry, cx, cy, arrowLength) {
   const py = ux;
   const labelX = cx + ux * (arrowLength * 0.62) + px * 24;
   const labelY = cy + uy * (arrowLength * 0.62) + py * 24;
+  const markerId = nextSvgId('mu-arrow-head');
   return `
     <defs>
-      <marker id="mu-arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">
+      <marker id="${markerId}" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">
         <path d="M0,0 L8,4 L0,8 z" fill="rgba(174,25,122,.96)" />
       </marker>
     </defs>
@@ -680,7 +706,7 @@ function hydrophobicMomentArrowSvg(nodeGeometry, cx, cy, arrowLength) {
       stroke="rgba(174,25,122,.96)"
       stroke-width="5.5"
       stroke-linecap="round"
-      marker-end="url(#mu-arrow-head)"
+      marker-end="url(#${markerId})"
     />
     <circle cx="${cx}" cy="${cy}" r="5" fill="rgba(174,25,122,.96)" stroke="rgba(255,255,255,.92)" stroke-width="2" />
     <rect
@@ -712,23 +738,19 @@ function wheelSvg(wheel, environment) {
   const cx = 300;
   const cy = 340;
   const halfWidth = Number(environment.wheel_halfwidth_deg);
-  const clipId = `wheel-clip-${Math.random().toString(36).slice(2, 10)}`;
-  const yBoundary = cy + boundaryRadius * Math.cos((halfWidth * Math.PI) / 180);
-  const dy = yBoundary - cy;
-  const chordHalfWidth = Math.sqrt(Math.max(0, boundaryRadius * boundaryRadius - dy * dy));
+  // Same rule as the model: a residue faces the apolar side when |angle| <= half-width,
+  // with angle 0 at the bottom of the wheel. The sector is therefore an angular wedge.
   let background = `<circle cx="${cx}" cy="${cy}" r="${boundaryRadius}" fill="rgba(38,93,203,.10)" />`;
   if (halfWidth >= 180) {
     background = `<circle cx="${cx}" cy="${cy}" r="${boundaryRadius}" fill="rgba(176,90,27,.12)" />`;
   } else if (halfWidth > 0) {
+    const start = wheelPoint(-halfWidth, boundaryRadius, cx, cy);
+    const end = wheelPoint(halfWidth, boundaryRadius, cx, cy);
+    const largeArc = halfWidth > 90 ? 1 : 0;
     background = `
-      <defs>
-        <clipPath id="${clipId}">
-          <circle cx="${cx}" cy="${cy}" r="${boundaryRadius}" />
-        </clipPath>
-      </defs>
       <circle cx="${cx}" cy="${cy}" r="${boundaryRadius}" fill="rgba(38,93,203,.10)" />
-      <rect x="${cx - boundaryRadius - 2}" y="${yBoundary}" width="${2 * boundaryRadius + 4}" height="${Math.max(0, (cy + boundaryRadius) - yBoundary + 2)}" fill="rgba(176,90,27,.12)" clip-path="url(#${clipId})" />
-      <line x1="${cx - chordHalfWidth}" y1="${yBoundary}" x2="${cx + chordHalfWidth}" y2="${yBoundary}" stroke="rgba(29,39,51,.18)" stroke-width="1.5" />
+      <path d="M ${cx} ${cy} L ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${boundaryRadius} ${boundaryRadius} 0 ${largeArc} 0 ${end.x.toFixed(2)} ${end.y.toFixed(2)} Z"
+        fill="rgba(176,90,27,.12)" stroke="rgba(29,39,51,.18)" stroke-width="1.5" />
     `;
   }
   const nodeGeometry = wheel.map((item, idx) => {
@@ -758,7 +780,9 @@ function wheelSvg(wheel, environment) {
     `;
   }).join('');
   const nodes = nodeGeometry.map(({ item, x, y, nodeRadius, labelY, turnIndex }) => {
+    const ring = item.environment === 'membrane' ? '#9a4c12' : '#1c4fb0';
     return `
+      <circle cx="${x}" cy="${y}" r="${nodeRadius + 3}" fill="none" stroke="${ring}" stroke-width="2.5" />
       <circle cx="${x}" cy="${y}" r="${nodeRadius}" fill="${item.color}" />
       <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="${Math.max(10, 12 - turnIndex * 0.35)}" font-weight="800" fill="white">${item.residue}</text>
       <text x="${x}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="600" fill="#5d6a74">${item.index}</text>
@@ -767,22 +791,37 @@ function wheelSvg(wheel, environment) {
   const hydroMomentArrow = hydrophobicMomentArrowSvg(nodeGeometry, cx, cy, boundaryRadius * 0.62);
   return `
     <div class="wheel-wrap">
-      <svg class="wheel" viewBox="0 -40 600 860" aria-label="helical wheel">
+      <svg class="wheel" viewBox="0 -40 600 860" role="img" aria-label="Helical wheel: residues facing the apolar side are ringed in brown, residues facing the polar side in blue">
         ${background}
-        ${polarLabelSvg(cx, cy, boundaryRadius, halfWidth, yBoundary)}
+        ${polarLabelSvg(cx, cy, boundaryRadius, halfWidth)}
         <circle cx="${cx}" cy="${cy}" r="${boundaryRadius}" fill="none" stroke="rgba(29,39,51,.16)" stroke-width="1.5" />
         ${hydroMomentArrow}
         ${sequenceSegments}
         ${nodes}
       </svg>
+      <div class="wheel-legend">
+        <span><i class="ring ring-apolar"></i>faces apolar side</span>
+        <span><i class="ring ring-polar"></i>faces polar side</span>
+        ${Object.entries(RESIDUE_FAMILY_LABELS).map(([family, label]) => `<span><i class="dot dot-${family}"></i>${label}</span>`).join('')}
+      </div>
     </div>
   `;
 }
 
+const RESIDUE_FAMILY_LABELS = {
+  hydrophobic: 'hydrophobic',
+  polar: 'polar',
+  positive: 'positive',
+  negative: 'negative',
+  special: 'histidine',
+};
+
 function zScorePlot(data) {
   const z = Number(data.z_score);
-  const clamped = Math.max(-4, Math.min(4, z));
-  const x = 24 + ((clamped + 4) / 8) * 312;
+  const bound = Math.max(4, Math.ceil(Math.abs(z)));
+  const x = 24 + ((z + bound) / (2 * bound)) * 312;
+  const gradientId = nextSvgId('zBand');
+  const tick = (value) => (value === 0 ? '0' : `${value > 0 ? '+' : ''}${value}σ`);
   const percentile = data.percentile_lower_is_better.toFixed(1);
   const mean = Number(data.random_reference.mean).toFixed(2);
   const std = Number(data.random_reference.std).toFixed(2);
@@ -791,7 +830,7 @@ function zScorePlot(data) {
       <h3>Z-score position</h3>
       <svg viewBox="0 0 360 120" width="100%" aria-label="Z-score plot">
         <defs>
-          <linearGradient id="zBand" x1="0%" y1="0%" x2="100%" y2="0%">
+          <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stop-color="rgba(203,58,43,.20)" />
             <stop offset="35%" stop-color="rgba(187,90,36,.18)" />
             <stop offset="50%" stop-color="rgba(14,90,109,.10)" />
@@ -799,15 +838,15 @@ function zScorePlot(data) {
             <stop offset="100%" stop-color="rgba(14,90,109,.26)" />
           </linearGradient>
         </defs>
-        <rect x="24" y="44" width="312" height="16" rx="8" fill="url(#zBand)" />
+        <rect x="24" y="44" width="312" height="16" rx="8" fill="url(#${gradientId})" />
         <line x1="180" y1="34" x2="180" y2="76" stroke="rgba(29,39,51,.35)" stroke-dasharray="4 4" />
-        <line x1="${x}" y1="28" x2="${x}" y2="84" stroke="#cb3a2b" stroke-width="3" />
-        <circle cx="${x}" cy="52" r="8" fill="#cb3a2b" />
-        <text x="24" y="98" font-size="11" fill="#5d6a74">-4σ</text>
-        <text x="96" y="98" font-size="11" fill="#5d6a74">-2σ</text>
-        <text x="176" y="98" font-size="11" fill="#5d6a74">0</text>
-        <text x="252" y="98" font-size="11" fill="#5d6a74">+2σ</text>
-        <text x="322" y="98" font-size="11" fill="#5d6a74">+4σ</text>
+        <line x1="${x}" y1="28" x2="${x}" y2="84" stroke="#1d2733" stroke-width="3" />
+        <circle cx="${x}" cy="52" r="8" fill="#1d2733" />
+        <text x="24" y="98" font-size="11" fill="#5d6a74">${tick(-bound)}</text>
+        <text x="102" y="98" font-size="11" fill="#5d6a74" text-anchor="middle">${tick(-bound / 2)}</text>
+        <text x="180" y="98" font-size="11" fill="#5d6a74" text-anchor="middle">0</text>
+        <text x="258" y="98" font-size="11" fill="#5d6a74" text-anchor="middle">${tick(bound / 2)}</text>
+        <text x="336" y="98" font-size="11" fill="#5d6a74" text-anchor="end">${tick(bound)}</text>
       </svg>
       <p class="plot-caption">Mean random energy ${mean} with σ ${std}. This sequence sits at Z = ${z.toFixed(3)} and percentile ${percentile}% (lower is better).</p>
     </div>
@@ -875,12 +914,12 @@ const HELP_TEXT = {
     'Model energy': 'Hamiltonian energy in dimensionless model units. Lower is better, but values are only meaningful comparatively within the same scoring setup.',
     'Z-score': 'Energy expressed relative to a random-sequence background. More negative means more exceptional.',
     'Percentile (lower better)': 'Fraction of random sequences with energy equal to or lower than this one. Lower is better.',
-    'Net charge': 'Net charge under the current model convention. In this version, histidine is neutral in the charge-dependent terms, so the model convention matches the approximate neutral-pH convention used here.',
+    'Net charge': 'Net charge under the model convention: Lys and Arg +1, Asp and Glu -1; histidine and the termini are treated as neutral.',
     'Joint energy': 'Sum of the two environment energies in Compare mode.',
     'Energy gap': 'Absolute difference between the sequence model energies in the two environments.',
     'Z-score gap': 'Absolute difference between the two Z-scores.',
     'Length': 'Number of residues in the sequence.',
-    'Best penetration': 'Sampled point that gives the most negative Z-score along the scan from water-like bulk medium (0%) to apolar bulk medium (100%).',
+    'Best penetration': 'Sampled point that gives the most negative Z-score along the scan from homogeneous polar medium (0%) to homogeneous apolar medium (100%). The same percentage reproduces this environment in the other panels.',
     'Sampled depths': 'Number of penetration-depth values tested in the scan.',
     'Interface': 'Selected interfacial preset used for the penetration scan.',
     'Optimization target': 'Criterion used to define the optimum. Here it is the minimum Z-score across the scan.',
@@ -895,8 +934,8 @@ const HELP_TEXT = {
     'Specificity objective': 'Optimization target for one-vs-rest design. Lower values mean the target stays more favorable relative to the best competing off-target.',
     'λ balance': 'Interpolation between the hard one-vs-rest limit and target-only optimization. λ=0 gives the strongest selectivity pressure; λ=1 reduces the objective to Htarget alone.',
     'Energy margin': 'Difference between the worst competing off-target model energy and the target model energy. Larger positive values mean cleaner target-vs-off-target separation.',
-    'Z-score margin': 'Difference between the worst competing off-target Z-score and the target Z-score. Larger positive values mean cleaner target-vs-off-target separation.',
-    'Worst off-target': 'Off-target environment with the lowest energy for the designed sequence, i.e. the most competitive undesired medium.',
+    'Z-score margin': 'Lowest off-target Z-score minus the target Z-score. Larger positive values mean cleaner target-vs-off-target separation.',
+    'Worst off-target': 'Off-target environment with the lowest model energy for the designed sequence (used for the energy margin).',
   },
   breakdown: {
     env: 'Environment term: preference of residue types for the chosen medium or sector.',
@@ -912,6 +951,21 @@ const HELP_TEXT = {
     abs_mu_h_per_residue: 'Absolute transverse hydrophobic moment divided by sequence length, useful for comparing helices of different sizes.',
   },
 };
+
+function settingsLine(data) {
+  const env = data.environment || {};
+  const parts = [humanizePreset(env.preset)];
+  if (isInterfacialPreset(env.preset)) {
+    parts.push(`apolar half-width ${Number(env.wheel_halfwidth_deg).toFixed(1)}°`);
+    parts.push(`wheel phase ${Number(env.wheel_phase_deg).toFixed(1)}°`);
+  }
+  if (data.alphabet) parts.push(`alphabet ${data.alphabet.join('')}`);
+  if (data.random_reference?.n) parts.push(`random reference n = ${data.random_reference.n}`);
+  if (data.design_settings) {
+    parts.push(`steps ${data.design_settings.steps}, restarts ${data.design_settings.restarts}, seed ${data.design_settings.seed}`);
+  }
+  return `<div class="settings-line">Settings: ${escapeHtml(parts.join(' · '))}</div>`;
+}
 
 function energyUnitNote() {
   return `<div class="energy-unit-note">Model energies are reported in dimensionless Hamiltonian units, not in physical units such as kcal/mol. Use them comparatively within the same environment setup, alphabet and weight set.</div>`;
@@ -995,9 +1049,7 @@ function observableGrid(observables = {}) {
 }
 
 function renderScore(data) {
-  const chargeValue = data.model_net_charge === data.neutral_ph_net_charge
-    ? `${data.model_net_charge}`
-    : `${data.model_net_charge} / ${data.neutral_ph_net_charge}`;
+  const chargeValue = `${data.model_net_charge}`;
   return `
     <div class="result-card">
       <div class="sequence-banner">${data.sequence}</div>
@@ -1007,6 +1059,7 @@ function renderScore(data) {
         ${statCard('Percentile (lower better)', `${data.percentile_lower_is_better.toFixed(1)}%`)}
         ${statCard('Net charge', chargeValue)}
       </div>
+      ${settingsLine(data)}
       ${energyUnitNote()}
       <div class="result-note">Interpretation: lower energy and more negative Z-score indicate stronger compatibility with the selected helical state within this model.</div>
       <div class="viz-grid">
@@ -1022,9 +1075,7 @@ function renderScore(data) {
 }
 
 function renderCompareEnvironmentCard(data, label) {
-  const chargeValue = data.model_net_charge === data.neutral_ph_net_charge
-    ? `${data.model_net_charge}`
-    : `${data.model_net_charge} / ${data.neutral_ph_net_charge}`;
+  const chargeValue = `${data.model_net_charge}`;
   return `
     <div class="compare-env-card">
       <div class="compare-env-head">
@@ -1039,6 +1090,7 @@ function renderCompareEnvironmentCard(data, label) {
         ${statCard('Percentile (lower better)', `${data.percentile_lower_is_better.toFixed(1)}%`)}
         ${statCard('Net charge', chargeValue)}
       </div>
+      ${settingsLine(data)}
       <div class="compare-env-note">Lower energy and more negative Z-score indicate stronger compatibility with this environment within the model.</div>
       <div class="compare-env-viz">
         ${zScorePlot(data)}
@@ -1052,10 +1104,11 @@ function renderCompareEnvironmentCard(data, label) {
   `;
 }
 
-function renderCompare(data) {
+function renderCompare(data, header = '') {
   return `
     <div class="result-card">
       <div class="sequence-banner">${data.sequence}</div>
+      ${header}
       <div class="result-grid">
         ${statCard('Joint energy', data.joint_energy.toFixed(3))}
         ${statCard('Energy gap', data.energy_gap.toFixed(3))}
@@ -1094,6 +1147,7 @@ function renderSpecificity(data) {
       <div class="toolbar">
         <button class="ghost-btn" type="button" data-download-specificity-csv>Download CSV</button>
       </div>
+      ${data.specificity_collection?.partial ? `<div class="result-note partial-note" role="status">Partial result (${escapeHtml(data.specificity_collection.partial_reason || 'stopped early')}): ${candidates.length} of ${Number(data.specificity_collection.requested || candidates.length)} requested candidates.</div>` : ''}
       <div class="sequence-banner">${selected.sequence}</div>
       <div class="result-grid">
         ${statCard('Requested candidates', Number(data.specificity_collection?.requested || candidates.length))}
@@ -1177,6 +1231,7 @@ function buildSpecificityCsv(data) {
     'z_score_margin',
     'energy_margin',
     'lambda_balance',
+    'partial',
   ];
 
   const rows = candidates.map((candidate, idx) => {
@@ -1195,6 +1250,7 @@ function buildSpecificityCsv(data) {
       Number(candidate.specificity_design?.z_score_margin || 0).toFixed(6),
       Number(candidate.specificity_design?.energy_margin || 0).toFixed(6),
       Number(candidate.specificity_design?.lambda_balance || 0).toFixed(2),
+      data.specificity_collection?.partial ? 'true' : 'false',
     ];
   });
 
@@ -1273,10 +1329,6 @@ function renderSpecificityState(state) {
     : '—';
 
   return `
-    <div class="result-card">
-      <div class="toolbar">
-        <button class="ghost-btn danger-ghost" type="button" data-stop-specificity>Stop and keep partial results</button>
-      </div>
       <div class="result-grid">
         ${statCard('Phase', state.phaseLabel || 'Initializing')}
         ${statCard('λ balance', Number(state.lambdaBalance || 0).toFixed(2))}
@@ -1297,20 +1349,15 @@ function renderSpecificityState(state) {
         ${latestLine}
       </div>
       <div class="family-note">Target environment: <strong>${escapeHtml(humanizePreset(state.targetPreset))}</strong>. Off-target set: ${escapeHtml(offTargetsLabel)}.</div>
-    </div>
   `;
 }
 
-function renderPartialSpecificity(state) {
-  const candidates = state.acceptedCandidates || [];
-  if (!candidates.length) {
-    return `
-      <div class="result-card">
-        <div class="error">Specificity run stopped before any candidate had been fully evaluated.</div>
-      </div>
-    `;
-  }
-  const payload = {
+function partialSpecificityPayload(state, reason) {
+  const candidates = [...(state.acceptedCandidates || [])].sort(compareSpecificityCandidates);
+  candidates.forEach((candidate, idx) => {
+    candidate.specificity_design = { ...candidate.specificity_design, rank: idx + 1 };
+  });
+  return {
     ...candidates[0],
     candidates,
     specificity_collection: {
@@ -1320,17 +1367,14 @@ function renderPartialSpecificity(state) {
       target_preset: state.targetPreset,
       off_target_presets: state.offTargets || [],
       partial: true,
-      stopped_early: true,
+      partial_reason: reason,
     },
   };
-  return renderSpecificity(payload);
 }
 
 function renderOptimalPenetration(data) {
   const best = data.best_score;
-  const chargeValue = best.model_net_charge === best.neutral_ph_net_charge
-    ? `${best.model_net_charge}`
-    : `${best.model_net_charge} / ${best.neutral_ph_net_charge}`;
+  const chargeValue = `${best.model_net_charge}`;
   return `
     <div class="result-card">
       <div class="sequence-banner">${data.sequence}</div>
@@ -1357,37 +1401,6 @@ function renderOptimalPenetration(data) {
         ${statCard('Interface', humanizePreset(data.interface_preset))}
         ${statCard('Optimization target', 'Minimum Z-score')}
       </div>
-    </div>
-  `;
-}
-
-function renderFamily(data) {
-  const note = data.status_message
-    ? `<div class="family-note">${escapeHtml(data.status_message)}</div>`
-    : '';
-  const members = data.members.map((member, idx) => `
-    <div class="family-item">
-      <div class="family-item-head">
-        <strong>Candidate ${idx + 1}</strong>
-        <span>Model energy ${member.energy.toFixed(3)} | Z ${member.z_score.toFixed(3)}</span>
-      </div>
-      <div class="family-seq">${member.sequence}</div>
-    </div>
-  `).join('');
-  return `
-    <div class="result-card">
-      <div class="toolbar">
-        <button class="ghost-btn" type="button" data-download-family>Download JSON</button>
-      </div>
-      <div class="result-grid">
-        ${statCard('Requested', data.family_size_requested)}
-        ${statCard('Returned', data.family_size_returned)}
-        ${statCard('Environment', data.environment.preset)}
-        ${statCard('Alphabet size', data.alphabet.length)}
-      </div>
-      ${energyUnitNote()}
-      ${note}
-      <div class="family-list">${members}</div>
     </div>
   `;
 }
@@ -1420,13 +1433,20 @@ function renderFamilyState(state) {
   const downloadBtn = state.finalData
     ? `<button class="ghost-btn" type="button" data-download-family>Download JSON</button>`
     : '';
+  const stopBtn = state.running
+    ? `<button class="ghost-btn danger-ghost" type="button" data-stop-family>Stop and keep accepted candidates</button>`
+    : '';
+  const partial = state.partialReason
+    ? `<div class="result-note partial-note" role="status">Partial result (${escapeHtml(state.partialReason)}): ${state.members.length} of ${state.target} requested candidates.</div>`
+    : '';
   return `
     <div class="result-card">
-      <div class="toolbar">${downloadBtn}</div>
+      <div class="toolbar">${downloadBtn}${stopBtn}</div>
+      ${partial}
       <div class="result-grid">
         ${statCard('Requested', state.target)}
         ${statCard('Returned', state.accepted)}
-        ${statCard('Environment', state.environment || '—')}
+        ${statCard('Environment', state.environment ? humanizePreset(state.environment) : '—')}
         ${statCard('Alphabet size', state.alphabetSize || '—')}
       </div>
       ${progress}
@@ -1436,47 +1456,85 @@ function renderFamilyState(state) {
   `;
 }
 
+function errorHtml(message) {
+  return `<div class="error" role="alert">${escapeHtml(message)}</div>`;
+}
+
+function setFormBusy(form, busy) {
+  const submit = $('button[type="submit"]', form);
+  if (submit) submit.disabled = busy;
+  form.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
 function bindForm(formId, resultId, builder, renderer) {
   const form = $(`#${formId}`);
   const result = $(`#${resultId}`);
+  let controller = null;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (controller) return;  // one calculation per form at a time
+    const current = new AbortController();
+    controller = current;
+    setFormBusy(form, true);
+    const loading = loadingNode();
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'ghost-btn';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => current.abort());
+    loading.appendChild(cancel);
     result.innerHTML = '';
-    result.appendChild(loadingNode());
+    result.appendChild(loading);
     try {
-      const data = await builder(new FormData(form));
+      const data = await builder(new FormData(form), current.signal);
       result.innerHTML = renderer(data);
+      if (formId !== 'pdb-form') {
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.className = 'ghost-btn';
+        download.textContent = 'Download JSON';
+        download.addEventListener('click', () => downloadJson(`${formId.replace(/-form$/, '')}_result.json`, data));
+        const toolbar = document.createElement('div');
+        toolbar.className = 'toolbar';
+        toolbar.appendChild(download);
+        result.prepend(toolbar);
+      }
     } catch (error) {
-      result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+      result.innerHTML = error.name === 'AbortError'
+        ? '<div class="result-note">Calculation cancelled.</div>'
+        : errorHtml(error.message);
+    } finally {
+      controller = null;
+      setFormBusy(form, false);
     }
   });
 }
 
 registerVisitCounter();
 
-bindForm('score-form', 'score-result', async (fd) => postJSON('/api/score', {
+bindForm('score-form', 'score-result', async (fd, signal) => postJSON('/api/score', {
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),
   n_random: Number(fd.get('n_random') || 500),
-}), renderScore);
+}, { signal }), renderScore);
 
-bindForm('design-form', 'design-result', async (fd) => postJSON('/api/design', {
+bindForm('design-form', 'design-result', async (fd, signal) => postJSON('/api/design', {
   length: Number(fd.get('length') || 20),
   residues: parseResidues(fd.get('residues')),
   environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),
   steps: Number(fd.get('steps') || 12000),
   restarts: Number(fd.get('restarts') || 8),
-}), renderScore);
+}, { signal }), renderScore);
 
-bindForm('compare-form', 'compare-result', async (fd) => postJSON('/api/compare', {
+bindForm('compare-form', 'compare-result', async (fd, signal) => postJSON('/api/compare', {
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment_a: buildEnvironmentFromFormData(fd, 'preset_a', 'penetration_depth_a'),
   environment_b: buildEnvironmentFromFormData(fd, 'preset_b', 'penetration_depth_b'),
-}), renderCompare);
+}, { signal }), renderCompare);
 
-bindForm('penetration-form', 'penetration-result', async (fd) => postJSON('/api/optimal-penetration', {
+bindForm('penetration-form', 'penetration-result', async (fd, signal) => postJSON('/api/optimal-penetration', {
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment: { preset: fd.get('preset') },
@@ -1484,9 +1542,9 @@ bindForm('penetration-form', 'penetration-result', async (fd) => postJSON('/api/
   percent_min: 0,
   percent_max: 100,
   percent_step: 5,
-}), renderOptimalPenetration);
+}, { signal }), renderOptimalPenetration);
 
-bindForm('cross-form', 'cross-result', async (fd) => postJSON('/api/cross-design', {
+bindForm('cross-form', 'cross-result', async (fd, signal) => postJSON('/api/cross-design', {
   length: Number(fd.get('length') || 20),
   residues: parseResidues(fd.get('residues')),
   environment_a: buildEnvironmentFromFormData(fd, 'preset_a', 'penetration_depth_a'),
@@ -1494,29 +1552,24 @@ bindForm('cross-form', 'cross-result', async (fd) => postJSON('/api/cross-design
   lambda_gap: Number(fd.get('lambda_gap') || 0.5),
   steps: Number(fd.get('steps') || 16000),
   restarts: Number(fd.get('restarts') || 10),
-}), (data) => `
-    <div class="result-card">
-      <div class="sequence-banner">${data.sequence}</div>
+}, { signal }), (data) => renderCompare(data, `
       <div class="result-grid">
         ${statCard('Joint objective', data.cross_design.objective.toFixed(3))}
         ${statCard('λgap', data.cross_design.lambda_gap.toFixed(2))}
         ${statCard('Model energy A', data.cross_design.energy_a.toFixed(3))}
         ${statCard('Model energy B', data.cross_design.energy_b.toFixed(3))}
       </div>
-      ${energyUnitNote()}
-      ${renderCompare(data)}
-    </div>
-`);
+`));
 
 const specificityForm = $('#specificity-form');
 const specificityResult = $('#specificity-result');
 let specificityController = null;
 specificityForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (specificityController) {
-    specificityController.abort();
-  }
-  specificityController = new AbortController();
+  if (specificityController) return;  // one run at a time; use Stop to end it
+  const controller = new AbortController();
+  specificityController = controller;
+  setFormBusy(specificityForm, true);
   const fd = new FormData(specificityForm);
   const targetPreset = String(fd.get('target_preset'));
   const sharedPenetration = Number(fd.get('penetration_depth') || 25);
@@ -1557,15 +1610,31 @@ specificityForm.addEventListener('submit', async (event) => {
     acceptedCandidates: [],
   };
 
+  // The Stop button stays in place (and keeps keyboard focus); only the progress block is redrawn.
+  specificityResult.innerHTML = `
+    <div class="result-card">
+      <div class="toolbar">
+        <button class="ghost-btn danger-ghost" type="button" data-stop-specificity>Stop and keep partial results</button>
+      </div>
+      <div data-specificity-state role="status"></div>
+    </div>
+  `;
+  $('[data-stop-specificity]', specificityResult).addEventListener('click', () => controller.abort(), { once: true });
+  const stateNode = $('[data-specificity-state]', specificityResult);
   const refresh = () => {
-    specificityResult.innerHTML = renderSpecificityState(state);
-    const stopBtn = $('[data-stop-specificity]', specificityResult);
-    if (stopBtn) {
-      stopBtn.addEventListener('click', () => {
-        if (specificityController) specificityController.abort();
-      }, { once: true });
-    }
+    stateNode.innerHTML = renderSpecificityState(state);
   };
+  const showPartial = (reason, message) => {
+    const partial = partialSpecificityPayload(state, reason);
+    const notice = message ? errorHtml(message) : '';
+    if (!partial.candidates.length) {
+      specificityResult.innerHTML = notice || '<div class="result-note">Specificity run stopped before any candidate had been fully evaluated.</div>';
+      return;
+    }
+    specificityResult.innerHTML = notice + renderSpecificity(partial);
+    bindSpecificityInteractions(specificityResult, partial);
+  };
+  let finished = false;
 
   refresh();
 
@@ -1625,45 +1694,32 @@ specificityForm.addEventListener('submit', async (event) => {
         state.bestSequence = message.payload.best_sequence || '';
         state.bestObjective = message.payload.best_objective ?? null;
       } else if (message.type === 'final') {
+        finished = true;
         specificityResult.innerHTML = renderSpecificity(message.payload);
         bindSpecificityInteractions(specificityResult, message.payload);
-        specificityController = null;
         refreshUsageCounters().catch(() => {});
         return;
       } else if (message.type === 'error') {
         throw new Error(message.detail || 'Specificity design failed');
       }
       refresh();
-    }, { signal: specificityController.signal });
+    }, { signal: controller.signal });
+    if (!finished) throw new Error('The calculation ended without a final result.');
   } catch (error) {
     if (error.name === 'AbortError') {
-      specificityResult.innerHTML = renderPartialSpecificity(state);
-      if (state.acceptedCandidates.length) {
-        bindSpecificityInteractions(specificityResult, {
-          ...state.acceptedCandidates[0],
-          candidates: state.acceptedCandidates,
-          specificity_collection: {
-            requested: state.targetCount || state.acceptedCandidates.length,
-            returned: state.acceptedCandidates.length,
-            lambda_balance: state.lambdaBalance || 0,
-            target_preset: state.targetPreset,
-            off_target_presets: state.offTargets || [],
-            partial: true,
-            stopped_early: true,
-          },
-        });
-      }
+      showPartial('stopped by the user');
     } else {
-      specificityResult.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+      showPartial('interrupted by an error', error.message);
     }
   } finally {
     specificityController = null;
+    setFormBusy(specificityForm, false);
   }
 });
 
-bindForm('pdb-form', 'pdb-result', async (fd) => postJSON('/api/pdb', {
+bindForm('pdb-form', 'pdb-result', async (fd, signal) => postJSON('/api/pdb', {
   sequence: fd.get('sequence'),
-}), (data) => {
+}, { signal }), (data) => {
   const viewerId = nextViewerId();
   setTimeout(() => {
     const downloadBtn = document.querySelector('[data-download-pdb]');
@@ -1696,8 +1752,13 @@ bindForm('pdb-form', 'pdb-result', async (fd) => postJSON('/api/pdb', {
 
 const familyForm = $('#family-form');
 const familyResult = $('#family-result');
+let familyController = null;
 familyForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (familyController) return;  // one run at a time
+  const controller = new AbortController();
+  familyController = controller;
+  setFormBusy(familyForm, true);
   const fd = new FormData(familyForm);
   const payload = {
     length: Number(fd.get('length') || 20),
@@ -1718,13 +1779,21 @@ familyForm.addEventListener('submit', async (event) => {
     alphabetSize: payload.residues.length,
     note: 'Starting family generation…',
     finalData: null,
+    running: true,
+    partialReason: '',
   };
 
   const refresh = () => {
+    const hadFocus = document.activeElement?.matches?.('[data-stop-family]');
     familyResult.innerHTML = renderFamilyState(state);
     const btn = familyResult.querySelector('[data-download-family]');
     if (btn && state.finalData) {
       btn.onclick = () => downloadJson('helix_family.json', state.finalData);
+    }
+    const stop = familyResult.querySelector('[data-stop-family]');
+    if (stop) {
+      stop.addEventListener('click', () => controller.abort(), { once: true });
+      if (hadFocus) stop.focus();
     }
   };
 
@@ -1756,8 +1825,22 @@ familyForm.addEventListener('submit', async (event) => {
         throw new Error(message.detail || 'Family generation failed');
       }
       refresh();
-    });
+    }, { signal: controller.signal });
+    if (!state.finalData) throw new Error('The calculation ended without a final result.');
+    state.running = false;
+    refresh();
   } catch (error) {
-    familyResult.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+    state.running = false;
+    const aborted = error.name === 'AbortError';
+    state.partialReason = aborted ? 'stopped by the user' : 'interrupted by an error';
+    if (state.members.length) {
+      refresh();
+      if (!aborted) familyResult.insertAdjacentHTML('afterbegin', errorHtml(error.message));
+    } else {
+      familyResult.innerHTML = aborted ? '<div class="result-note">Family generation stopped.</div>' : errorHtml(error.message);
+    }
+  } finally {
+    familyController = null;
+    setFormBusy(familyForm, false);
   }
 });

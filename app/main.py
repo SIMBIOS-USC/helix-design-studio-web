@@ -550,7 +550,7 @@ class ScoreRequest(RequestModel):
 
 class DesignRequest(RequestModel):
     length: int = Field(default=20, ge=4, le=MAX_SEQUENCE_LENGTH)
-    residues: List[str] = Field(default_factory=lambda: list(DEFAULT_ALPHABET_16), max_length=2 * MAX_ALLOWED_RESIDUES)
+    residues: List[str] = Field(default_factory=lambda: list(FULL_ALPHABET_20), max_length=2 * MAX_ALLOWED_RESIDUES)
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     weights: WeightsConfig = Field(default_factory=WeightsConfig)
     n_decoys: int = Field(default=2000, ge=100, le=MAX_N_DECOYS)

@@ -88,10 +88,10 @@ HYDROPHOBICITY_FP = FAUCHERE_PLISKA_HYDROPHOBICITY
 
 RESIDUE_COLORS = {
     "hydrophobic": "#b05a1b",
-    "polar": "#2b8a78",
+    "polar": "#23796a",
     "positive": "#e03131",
     "negative": "#265dcb",
-    "special": "#7a5cfa",
+    "special": "#6c4bf0",
 }
 
 HYDROPHOBIC = {"A", "V", "L", "I", "M", "F", "W", "Y", "C", "P"}
