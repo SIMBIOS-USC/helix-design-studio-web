@@ -70,15 +70,11 @@ class HamiltonianBuilder:
         self,
         L: int,
         amino_acids: List[str],
-        bits_per_pos: int,
-        n_qubits: int,
         **kwargs
     ):
         self.L = L
         self.amino_acids = amino_acids
         self.n_aa = len(amino_acids)
-        self.bits_per_pos = bits_per_pos
-        self.n_qubits = n_qubits
         self.kwargs = kwargs
         self.stats_cache_version = 4
         self.align_phase = bool(kwargs.get('align_phase', False))
@@ -94,23 +90,13 @@ class HamiltonianBuilder:
         n_decoys = self.kwargs.get('n_decoys', 10000)
         self.stats = self._load_or_calibrate_z_scores(n_decoys=n_decoys)
 
-    def _default_stats_cache_dir(self) -> str:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".zscore_cache"))
-        os.makedirs(base_dir, exist_ok=True)
-        return base_dir
-
     def _stats_cache_payload(self, n_decoys: int) -> Dict[str, Any]:
         return {
             "stats_cache_version": self.stats_cache_version,
             "L": self.L,
             "amino_acids": self.amino_acids,
-            "bits_per_pos": self.bits_per_pos,
-            "n_qubits": self.n_qubits,
             "n_decoys": int(n_decoys),
             "zscore_seed": int(self.kwargs.get('zscore_seed', 42)),
-            "membrane_mode": self.kwargs.get('membrane_mode', 'wheel'),
-            "membrane_span": self.kwargs.get('membrane_span'),
-            "membrane_positions": self.kwargs.get('membrane_positions'),
             "wheel_phase_deg": float(self.kwargs.get('wheel_phase_deg', 0.0)),
             "wheel_halfwidth_deg": float(self.kwargs.get('wheel_halfwidth_deg', 90.0)),
             "align_phase": bool(self.kwargs.get('align_phase', False)),
@@ -128,7 +114,7 @@ class HamiltonianBuilder:
         cache_key = hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
-        cache_dir = self.kwargs.get('stats_cache_dir') or self._default_stats_cache_dir()
+        cache_dir = self.kwargs.get('stats_cache_dir') or os.path.join(tempfile.gettempdir(), "helix-design-studio-cache")
         os.makedirs(cache_dir, mode=0o700, exist_ok=True)
         return os.path.join(cache_dir, f"zscore_stats_{cache_key}.json")
 
@@ -160,9 +146,7 @@ class HamiltonianBuilder:
         use_cache = self._cache_dir_is_private(cache_dir)
         if not use_cache:
             logger.warning("Ignoring Z-score cache directory not private to this user: %s", cache_dir)
-        force_recompute = bool(self.kwargs.get('recompute_zscore', False))
-
-        if use_cache and not force_recompute and os.path.exists(cache_path):
+        if use_cache and os.path.exists(cache_path):
             cached_stats = self._read_stats_cache(cache_path, n_decoys)
             if cached_stats is not None:
                 logger.debug("Reusing cached Z-score calibration: %s", cache_path)

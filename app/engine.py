@@ -8,13 +8,16 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional
 
 import numpy as np
 
 def _resolve_code_dir() -> Path:
-    env_override = os.environ.get("QFOLD_CODE_DIR")
+    # QFOLD_CODE_DIR se mantiene como nombre heredado.
+    env_override = os.environ.get("HELIX_CODE_DIR") or os.environ.get("QFOLD_CODE_DIR")
     candidate = (Path(env_override).expanduser().resolve() if env_override
                  else Path(__file__).resolve().parents[1] / "Code")
     if not (candidate / "core" / "hamiltonian_builder.py").is_file():
@@ -95,7 +98,6 @@ HYDROPHOBIC = {"A", "V", "L", "I", "M", "F", "W", "Y", "C", "P"}
 POLAR = {"Q", "N", "S", "T", "G"}
 POSITIVE = {"K", "R"}
 NEGATIVE = {"D", "E"}
-SPECIAL = {"H", "X"}
 
 THREE_LETTER_CODES = {
     "A": "ALA",
@@ -119,10 +121,6 @@ THREE_LETTER_CODES = {
     "Y": "TYR",
     "V": "VAL",
 }
-
-
-def bits_per_position(n_aa: int) -> int:
-    return max(1, math.ceil(math.log2(n_aa)))
 
 
 def normalize_residues(residues: Optional[List[str] | str]) -> List[str]:
@@ -221,17 +219,13 @@ def build_builder(
     zscore_seed: int = 42,
     stats_cache_dir: Optional[str] = None,
 ) -> HamiltonianBuilder:
-    bpp = bits_per_position(len(amino_acids))
     return HamiltonianBuilder(
         L=length,
         amino_acids=amino_acids,
-        bits_per_pos=bpp,
-        n_qubits=length * bpp,
         n_decoys=n_decoys,
         zscore_seed=zscore_seed,
         stats_cache_dir=stats_cache_dir or default_cache_dir(),
         stats_cache_max_files=int(os.environ.get("HELIX_CACHE_MAX_FILES") or 2000),
-        membrane_mode="wheel",
         wheel_phase_deg=float(environment["wheel_phase_deg"]),
         wheel_halfwidth_deg=float(environment["wheel_halfwidth_deg"]),
         membrane_charge=str(environment["membrane_charge"]),
@@ -253,31 +247,44 @@ def codes_to_seq(codes: List[int], amino_acids: List[str]) -> str:
 
 
 class CalculationTimeout(RuntimeError):
-    """La búsqueda superó el tiempo máximo asignado a una petición."""
+    """El cálculo superó el tiempo máximo asignado a una petición."""
 
 
-_calculation_limits = threading.local()
+class CalculationCancelled(RuntimeError):
+    """El cliente abandonó la petición y el cálculo se detuvo."""
+
+
+@dataclass(frozen=True)
+class CalculationLimits:
+    deadline: Optional[float] = None  # instante límite en time.monotonic()
+    cancelled: Optional[threading.Event] = None
+
+
+# Un ContextVar se copia al hilo del pool que ejecuta el cálculo.
+_calculation_limits: ContextVar[Optional[CalculationLimits]] = ContextVar("calculation_limits", default=None)
 
 
 @contextmanager
-def calculation_deadline(deadline: Optional[float]) -> Generator[None, None, None]:
-    """Fija, para el hilo actual, un instante límite (time.monotonic) para los cálculos."""
-    previous = getattr(_calculation_limits, "deadline", None)
-    _calculation_limits.deadline = deadline
+def calculation_limits(limits: Optional[CalculationLimits]) -> Generator[None, None, None]:
+    token = _calculation_limits.set(limits)
     try:
         yield
     finally:
-        _calculation_limits.deadline = previous
+        _calculation_limits.reset(token)
 
 
-def _check_deadline() -> None:
-    deadline = getattr(_calculation_limits, "deadline", None)
-    if deadline is not None and time.monotonic() > deadline:
+def _check_limits() -> None:
+    limits = _calculation_limits.get()
+    if limits is None:
+        return
+    if limits.cancelled is not None and limits.cancelled.is_set():
+        raise CalculationCancelled("The calculation was cancelled.")
+    if limits.deadline is not None and time.monotonic() > limits.deadline:
         raise CalculationTimeout("The calculation exceeded the time limit of the web server.")
 
 
 def compute_breakdown(builder: HamiltonianBuilder, codes: List[int], weights: Dict[str, float]) -> Dict[str, float]:
-    _check_deadline()
+    _check_limits()
     raw = builder.raw_terms(codes)
     z = {
         "local": builder._apply_z_score("helix_local", raw["helix_local"]),
@@ -341,9 +348,14 @@ def model_net_charge(sequence: str) -> int:
     return int(sum(charge_map.get(aa, 0) for aa in sequence))
 
 
-def neutral_ph_net_charge(sequence: str) -> int:
-    charge_map = {"R": 1, "K": 1, "D": -1, "E": -1}
-    return int(sum(charge_map.get(aa, 0) for aa in sequence))
+# Flujos aleatorios independientes derivados de la semilla del usuario (SeedSequence): la
+# calibración usa la semilla tal cual; referencias y búsquedas usan subflujos distintos.
+REFERENCE_STREAM = 1
+SEARCH_STREAM = 2
+
+
+def rng_seed(seed: int, stream: int, *index: int) -> List[int]:
+    return [int(seed), stream, *index]
 
 
 def random_reference(
@@ -351,7 +363,7 @@ def random_reference(
     amino_acids: List[str],
     weights: Dict[str, float],
     n_random: int,
-    seed: int,
+    seed: int | List[int],
 ) -> Dict[str, float]:
     rng = np.random.default_rng(seed)
     energies = []
@@ -397,7 +409,6 @@ def score_sequence_with_builder(
         },
         "wheel": wheel_data(sequence, environment),
         "model_net_charge": model_net_charge(sequence),
-        "neutral_ph_net_charge": neutral_ph_net_charge(sequence),
         "alphabet": amino_acids,
     }
 
@@ -434,10 +445,11 @@ def score_sequence(
 ) -> Dict[str, Any]:
     sequence = sequence.strip().upper()
     amino_acids = normalize_residues(residues)
+    seq_to_codes(sequence, amino_acids)  # valida antes de calibrar
     env = resolve_environment(environment)
     w = normalize_weights(weights)
     builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
+    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
     return score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
 
 
@@ -447,7 +459,7 @@ def simulated_annealing(
     weights: Dict[str, float],
     steps: int,
     restarts: int,
-    seed: int,
+    seed: int | List[int],
     penalty_fn: Optional[Callable[[List[int]], float]] = None,
 ) -> Dict[str, Any]:
     rng = np.random.default_rng(seed)
@@ -510,7 +522,7 @@ def _iter_specificity_search(
     lambda_balance: float,
     steps: int,
     restarts: int,
-    seed: int,
+    seed: int | List[int],
     accepted_codes: Optional[List[List[int]]] = None,
     min_distance: int = 0,
     penalty_weight: float = 0.0,
@@ -636,42 +648,6 @@ def _iter_specificity_search(
     }
 
 
-def _run_specificity_search(
-    target_builder: HamiltonianBuilder,
-    off_builders: List[HamiltonianBuilder],
-    amino_acids: List[str],
-    weights: Dict[str, float],
-    lambda_balance: float,
-    steps: int,
-    restarts: int,
-    seed: int,
-    accepted_codes: Optional[List[List[int]]] = None,
-    min_distance: int = 0,
-    penalty_weight: float = 0.0,
-    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-) -> Dict[str, Any]:
-    final_payload: Optional[Dict[str, Any]] = None
-    for update in _iter_specificity_search(
-        target_builder=target_builder,
-        off_builders=off_builders,
-        amino_acids=amino_acids,
-        weights=weights,
-        lambda_balance=lambda_balance,
-        steps=steps,
-        restarts=restarts,
-        seed=seed,
-        accepted_codes=accepted_codes,
-        min_distance=min_distance,
-        penalty_weight=penalty_weight,
-        progress_callback=progress_callback,
-    ):
-        if update["type"] == "result":
-            final_payload = update["payload"]
-    if final_payload is None:
-        raise RuntimeError("Specificity search did not produce a result")
-    return final_payload
-
-
 SPECIFICITY_N_RANDOM = 3000
 
 
@@ -691,6 +667,7 @@ def _build_specificity_candidate_payload(
     steps: int,
     restarts: int,
     seed: int,
+    attempt: int,
     objective: float,
     best_target_energy: float,
     best_off_energies: List[float],
@@ -714,10 +691,11 @@ def _build_specificity_candidate_payload(
         "off_target_presets": [env["preset"] for env in off_target_envs],
         "worst_off_target_preset": worst_off_target["environment"]["preset"],
         "energy_margin": worst_off_target["energy"] - target_score["energy"],
-        "z_score_margin": worst_off_target["z_score"] - target_score["z_score"],
+        "z_score_margin": min(item["z_score"] for item in off_target_scores) - target_score["z_score"],
         "steps": steps,
         "restarts": restarts,
         "seed": seed,
+        "attempt": attempt,
         "best_target_energy": best_target_energy,
         "best_off_target_energy": min(best_off_energies) if best_off_energies else None,
     }
@@ -745,8 +723,8 @@ def design_sequence(
     env = resolve_environment(environment)
     w = normalize_weights(weights)
     builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=500, seed=seed + 17)
-    result = simulated_annealing(builder, amino_acids, w, steps=steps, restarts=restarts, seed=seed)
+    ref = random_reference(builder, amino_acids, w, n_random=500, seed=rng_seed(seed, REFERENCE_STREAM))
+    result = simulated_annealing(builder, amino_acids, w, steps=steps, restarts=restarts, seed=rng_seed(seed, SEARCH_STREAM))
     score = score_sequence_with_builder(result["sequence"], builder, env, amino_acids, w, ref, 500)
     score["design_settings"] = {"steps": steps, "restarts": restarts, "seed": seed}
     return score
@@ -801,7 +779,7 @@ def design_family_stream(
     w = normalize_weights(weights)
     builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
     n_random = 500
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
+    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
 
     unique_results: Dict[str, Dict[str, Any]] = {}
     accepted_codes: List[List[int]] = []
@@ -831,7 +809,7 @@ def design_family_stream(
             w,
             steps=steps,
             restarts=restarts,
-            seed=seed + run_idx,
+            seed=rng_seed(seed, SEARCH_STREAM, run_idx),
             penalty_fn=penalty_fn,
         )
         sequence = candidate["sequence"]
@@ -1004,7 +982,7 @@ def cross_environment_design(
     env_b = resolve_environment(environment_b)
     builder_a = build_builder(length, amino_acids, env_a, n_decoys=n_decoys, zscore_seed=seed)
     builder_b = build_builder(length, amino_acids, env_b, n_decoys=n_decoys, zscore_seed=seed)
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(rng_seed(seed, SEARCH_STREAM))
     n_aa = len(amino_acids)
     best_codes = None
     best_obj = float("inf")
@@ -1055,8 +1033,8 @@ def cross_environment_design(
     sequence = codes_to_seq(best_codes, amino_acids)
     # El informe usa los mismos builders (misma calibración) que la optimización.
     n_random = 500
-    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=seed + 17)
-    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=seed + 17)
+    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
+    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
     scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, n_random)
     scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, n_random)
     comparison = {
@@ -1187,7 +1165,9 @@ def design_specificity_stream(
     total_builders = len(builder_specs)
     for idx, (label, env) in enumerate(builder_specs, start=1):
         built[label] = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-        refs[label] = random_reference(built[label], amino_acids, w, n_random=SPECIFICITY_N_RANDOM, seed=seed + 17)
+        refs[label] = random_reference(
+            built[label], amino_acids, w, n_random=SPECIFICITY_N_RANDOM, seed=rng_seed(seed, REFERENCE_STREAM)
+        )
         yield {
             "type": "phase",
             "payload": {
@@ -1228,7 +1208,7 @@ def design_specificity_stream(
             lambda_balance=lambda_balance,
             steps=steps,
             restarts=restarts_per_attempt,
-            seed=seed + attempt_idx,
+            seed=rng_seed(seed, SEARCH_STREAM, attempt_idx),
             accepted_codes=accepted_codes,
             min_distance=min_distance,
             penalty_weight=penalty_weight,
@@ -1273,7 +1253,8 @@ def design_specificity_stream(
             lambda_balance=lambda_balance,
             steps=steps,
             restarts=restarts_per_attempt,
-            seed=seed + attempt_idx,
+            seed=seed,
+            attempt=attempt_idx + 1,
             objective=result["objective"],
             best_target_energy=result["best_target_energy"],
             best_off_energies=result["best_off_energies"],

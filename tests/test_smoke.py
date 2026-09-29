@@ -186,6 +186,8 @@ class WebSmokeTests(unittest.TestCase):
             ("/api/optimal-penetration", {"sequence": "ALKD", "environment": self.env_a, "percent_step": 20}),
             ("/api/specificity-design", {**specificity, "off_target_environments": [self.env_a, self.env_b]}),
             ("/api/specificity-design", {**specificity, "off_target_environments": [
+                {"preset": "interfacial_neg", "wheel_halfwidth_deg": 90.0}]}),
+            ("/api/specificity-design", {**specificity, "off_target_environments": [
                 {"preset": "homogeneous_polar", "wheel_halfwidth_deg": float(angle)} for angle in range(5)
             ]}),
             ("/api/specificity-design", {**specificity, "num_sequences": 5, "restarts": 4}),
@@ -258,7 +260,10 @@ assert client.post("/api/visit", headers=headers).json()["total_visits"] == 1
 assert client.post("/api/visit", headers={"X-Anonymous-Id": "visitor-2"}).json()["unique_visitors"] == 2
 payload = {"sequence": "ALKD", "residues": ["A", "L", "K", "D"], "n_decoys": 100, "n_random": 100}
 assert client.post("/api/score", json=payload).status_code == 200
-assert client.post("/api/score", json={**payload, "sequence": "ALKE"}).status_code == 400
+assert client.post("/api/score", json={**payload, "sequence": "ALKE"}).status_code == 422
+main.MAX_JOB_SECONDS = 0.0
+assert client.post("/api/score", json=payload).status_code == 400
+main.MAX_JOB_SECONDS = 1800.0
 assert client.get("/api/usage-metrics").json() == {"total_visits": 2, "unique_visitors": 2, "total_runs": 1}
 assert client.get("/api/health").status_code == 200, "client errors must not degrade health"
 main.score_sequence = lambda **kwargs: 1 / 0

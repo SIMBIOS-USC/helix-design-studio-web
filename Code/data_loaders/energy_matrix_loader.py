@@ -57,7 +57,7 @@ def _load_energy_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
 
         # Read the raw 20x20 matrix from file
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        energy_matrix_raw = np.loadtxt(data_lines, dtype=float)
+        energy_matrix_raw = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
         if energy_matrix_raw.shape != (n_aa, n_aa):
              raise ValueError(f"Matrix shape error. Expected ({n_aa}, {n_aa}), but got {energy_matrix_raw.shape}")
@@ -81,9 +81,9 @@ def _load_energy_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
         return energy_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading Miyazawa-Jernigan matrix: {e}")
+        raise RuntimeError(f"Error loading Miyazawa-Jernigan matrix: {e}") from e
 
 @functools.lru_cache(maxsize=None)
 def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
@@ -99,29 +99,10 @@ def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
         with open(path, 'r') as f:
             lines = f.readlines()
 
-        # First line contains amino acid symbols
+        # First line contains amino acid symbols; the rest is the square matrix
         symbols = lines[0].strip().split()
-        n_aa = len(symbols)
-
-        # Initialize matrix
-        helix_matrix = np.zeros((n_aa, n_aa))
-
-        # Read full square matrix (starting from line 1)
-        for i, line in enumerate(lines[1:]):
-            if i >= n_aa:
-                break
-            values = line.strip().split()
-            if not values:  # Skip empty lines
-                continue
-
-            # Convert strings to floats
-            values = [float(v) for v in values]
-
-            if len(values) != n_aa:
-                raise ValueError(f"Row {i+1} has {len(values)} values, expected {n_aa}")
-
-            # Fill row i with all values
-            helix_matrix[i, :] = values
+        data_lines = [line.strip() for line in lines[1:] if line.strip()]
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
         _validate_labeled_matrix(helix_matrix, symbols, "Helix propensity matrix")
         logger.debug("Loaded helix propensity matrix %s with symbols %s", helix_matrix.shape, symbols)
@@ -129,9 +110,9 @@ def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
         return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix propensity matrix: {e}")
+        raise RuntimeError(f"Error loading helix propensity matrix: {e}") from e
 
 @functools.lru_cache(maxsize=None)
 def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
@@ -147,7 +128,7 @@ def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
 
         # The rest of lines contain the matrix data
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        helix_matrix = np.loadtxt(data_lines, dtype=float)
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
         _validate_labeled_matrix(helix_matrix, symbols, "Helix i,i+3 matrix")
         logger.debug("Loaded helix i,i+3 matrix %s with symbols %s", helix_matrix.shape, symbols)
@@ -155,9 +136,9 @@ def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
         return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix i,i+3 matrix: {e}")
+        raise RuntimeError(f"Error loading helix i,i+3 matrix: {e}") from e
 
 @functools.lru_cache(maxsize=None)
 def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
@@ -173,7 +154,7 @@ def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
 
         # The rest of lines contain the matrix data
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        helix_matrix = np.loadtxt(data_lines, dtype=float)
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
         _validate_labeled_matrix(helix_matrix, symbols, "Helix i,i+4 matrix")
         logger.debug("Loaded helix i,i+4 matrix %s with symbols %s", helix_matrix.shape, symbols)
@@ -181,6 +162,6 @@ def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
         return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix i,i+4 matrix: {e}")
+        raise RuntimeError(f"Error loading helix i,i+4 matrix: {e}") from e

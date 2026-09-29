@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -12,6 +13,7 @@ import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -19,14 +21,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .engine import (
+    CalculationCancelled,
+    CalculationLimits,
     CalculationTimeout,
     DEFAULT_ALPHABET_16,
     DEFAULT_WEIGHTS,
     ENVIRONMENT_PRESETS,
-    calculation_deadline,
+    calculation_limits,
     compare_environments,
     cross_environment_design,
     design_specificity,
@@ -36,6 +41,7 @@ from .engine import (
     design_sequence,
     generate_helix_pdb,
     optimize_penetration,
+    resolve_environment,
     score_sequence,
 )
 
@@ -56,6 +62,7 @@ CORS_ORIGINS = [
 MAX_CONCURRENT_JOBS = max(1, int(os.environ.get("HELIX_MAX_CONCURRENT_JOBS", "4")))
 MAX_JOB_SECONDS = float(os.environ.get("HELIX_MAX_JOB_SECONDS", "1800"))
 MAX_REQUEST_BYTES = 64 * 1024
+DISCONNECT_POLL_SECONDS = 1.0
 MAX_LOGGED_TEXT = 200
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
@@ -252,6 +259,12 @@ def _client_ip_from_request(request: Request) -> str:
     return "unknown"
 
 
+def _url_origin(url: str) -> Optional[str]:
+    """Solo esquema y host: la ruta o la query de un referer pueden contener datos privados."""
+    parts = urlsplit(url[:2048])
+    return f"{parts.scheme}://{parts.netloc}"[:MAX_LOGGED_TEXT] if parts.scheme and parts.netloc else None
+
+
 def _usage_context(request: Request) -> Dict[str, Any]:
     anonymous_id = request.headers.get("x-anonymous-id", "").strip()[:64] or None
     user_agent = request.headers.get("user-agent", "").strip() or "unknown"
@@ -261,7 +274,7 @@ def _usage_context(request: Request) -> Dict[str, Any]:
         "user_agent_hash": _hash_value(user_agent),
         "client_ip_hash": _hash_value(client_ip),
         "origin": request.headers.get("origin", "")[:MAX_LOGGED_TEXT] or None,
-        "referer": request.headers.get("referer", "")[:MAX_LOGGED_TEXT] or None,
+        "referer": _url_origin(request.headers.get("referer", "")),
     }
 
 
@@ -499,8 +512,15 @@ class WeightsConfig(RequestModel):
     lambda_electrostatic: float = _weight_field("lambda_electrostatic")
 
 
+def _check_sequence_in_alphabet(sequence: str, residues: List[str]) -> None:
+    missing = sorted(set(sequence) - set(residues))
+    if missing:
+        raise ValueError(f"Residues {', '.join(missing)} of the sequence are not in the allowed residues.")
+
+
 def _environment_key(env: EnvironmentConfig) -> tuple[Any, Any, Any]:
-    return (env.preset, env.wheel_halfwidth_deg, env.membrane_charge)
+    resolved = resolve_environment(env.model_dump())
+    return (resolved["preset"], float(resolved["wheel_halfwidth_deg"]), resolved["membrane_charge"])
 
 
 class ScoreRequest(RequestModel):
@@ -521,6 +541,11 @@ class ScoreRequest(RequestModel):
     @classmethod
     def validate_residues(cls, value: List[str]) -> List[str]:
         return _validate_residues(value)
+
+    @model_validator(mode="after")
+    def validate_sequence_alphabet(self) -> "ScoreRequest":
+        _check_sequence_in_alphabet(self.sequence, self.residues)
+        return self
 
 
 class DesignRequest(RequestModel):
@@ -557,6 +582,11 @@ class CompareRequest(RequestModel):
     @classmethod
     def validate_residues(cls, value: List[str]) -> List[str]:
         return _validate_residues(value)
+
+    @model_validator(mode="after")
+    def validate_sequence_alphabet(self) -> "CompareRequest":
+        _check_sequence_in_alphabet(self.sequence, self.residues)
+        return self
 
 
 class FamilyDesignRequest(RequestModel):
@@ -670,6 +700,11 @@ class PenetrationOptimizationRequest(RequestModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_sequence_alphabet(self) -> "PenetrationOptimizationRequest":
+        _check_sequence_in_alphabet(self.sequence, self.residues)
+        return self
+
 
 class PdbRequest(RequestModel):
     sequence: str = Field(max_length=4 * MAX_SEQUENCE_LENGTH)
@@ -716,7 +751,7 @@ def usage_metrics() -> Dict[str, Any]:
     return _usage_metrics()
 
 
-def _run_calculation(
+async def _run_calculation(
     request: Request,
     endpoint: str,
     payload: Any,
@@ -727,9 +762,24 @@ def _run_calculation(
     started = time.perf_counter()
     if use_job_slot:
         _acquire_job_slot()
+    cancelled = threading.Event()
+    limits = CalculationLimits(deadline=time.monotonic() + MAX_JOB_SECONDS, cancelled=cancelled)
+
+    def run() -> Dict[str, Any]:
+        with calculation_limits(limits):
+            return calculation()
+
+    task = asyncio.ensure_future(run_in_threadpool(run))
     try:
-        with calculation_deadline(time.monotonic() + MAX_JOB_SECONDS):
-            result = calculation()
+        # Si el cliente se va (pestaña cerrada, Cancelar), el cálculo se detiene y libera su plaza.
+        while not task.done():
+            await asyncio.wait({task}, timeout=DISCONNECT_POLL_SECONDS)
+            if not task.done() and await request.is_disconnected():
+                cancelled.set()
+        result = task.result()
+    except CalculationCancelled as exc:
+        _log_usage_event(request, endpoint, payload, "cancelled", time.perf_counter() - started)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         status_code, detail = _classify_error(exc)
         _log_usage_event(
@@ -738,6 +788,8 @@ def _run_calculation(
         )
         raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
+        if not task.done():
+            cancelled.set()
         if use_job_slot:
             _job_slots.release()
     _log_usage_event(
@@ -759,12 +811,13 @@ def _stream_calculation(
             yield json.dumps({"type": "error", "detail": BUSY_MSG}) + "\n"
             return
         final_payload: Dict[str, Any] = {}
-        deadline = time.monotonic() + MAX_JOB_SECONDS
+        limits = CalculationLimits(deadline=time.monotonic() + MAX_JOB_SECONDS)
         try:
             iterator = updates()
             while True:
-                # Cada paso puede ejecutarse en un hilo distinto del pool: se fija el límite en cada uno.
-                with calculation_deadline(deadline):
+                # Cada paso puede ejecutarse en un hilo distinto del pool: se fijan los límites en cada uno.
+                # Si el cliente se desconecta, Starlette deja de pedir pasos y cierra el generador.
+                with calculation_limits(limits):
                     update = next(iterator, None)
                 if update is None:
                     break
@@ -795,8 +848,8 @@ def _specificity_summary(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.post("/api/score")
-def score(payload: ScoreRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(request, "score", payload, lambda: score_sequence(
+async def score(payload: ScoreRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(request, "score", payload, lambda: score_sequence(
         sequence=payload.sequence,
         residues=payload.residues,
         environment=payload.environment.model_dump(),
@@ -808,8 +861,8 @@ def score(payload: ScoreRequest, request: Request) -> Dict[str, Any]:
 
 
 @app.post("/api/design")
-def design(payload: DesignRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(request, "design", payload, lambda: design_sequence(
+async def design(payload: DesignRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(request, "design", payload, lambda: design_sequence(
         length=payload.length,
         residues=payload.residues,
         environment=payload.environment.model_dump(),
@@ -822,8 +875,8 @@ def design(payload: DesignRequest, request: Request) -> Dict[str, Any]:
 
 
 @app.post("/api/compare")
-def compare(payload: CompareRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(request, "compare", payload, lambda: compare_environments(
+async def compare(payload: CompareRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(request, "compare", payload, lambda: compare_environments(
         sequence=payload.sequence,
         residues=payload.residues,
         environment_a=payload.environment_a.model_dump(),
@@ -850,8 +903,8 @@ def _family_arguments(payload: FamilyDesignRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/design-family")
-def family_design(payload: FamilyDesignRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(
+async def family_design(payload: FamilyDesignRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(
         request, "design-family", payload, lambda: design_family(**_family_arguments(payload)), _family_summary
     )
 
@@ -865,8 +918,8 @@ def family_design_stream_route(payload: FamilyDesignRequest, request: Request) -
 
 
 @app.post("/api/cross-design")
-def cross_design(payload: CrossDesignRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(request, "cross-design", payload, lambda: cross_environment_design(
+async def cross_design(payload: CrossDesignRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(request, "cross-design", payload, lambda: cross_environment_design(
         length=payload.length,
         residues=payload.residues,
         environment_a=payload.environment_a.model_dump(),
@@ -897,8 +950,8 @@ def _specificity_arguments(payload: SpecificityDesignRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/specificity-design")
-def specificity_design(payload: SpecificityDesignRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(
+async def specificity_design(payload: SpecificityDesignRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(
         request, "specificity-design", payload,
         lambda: design_specificity(**_specificity_arguments(payload)), _specificity_summary,
     )
@@ -913,8 +966,8 @@ def specificity_design_stream_route(payload: SpecificityDesignRequest, request: 
 
 
 @app.post("/api/optimal-penetration")
-def optimal_penetration(payload: PenetrationOptimizationRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(request, "optimal-penetration", payload, lambda: optimize_penetration(
+async def optimal_penetration(payload: PenetrationOptimizationRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(request, "optimal-penetration", payload, lambda: optimize_penetration(
         sequence=payload.sequence,
         residues=payload.residues,
         environment=payload.environment.model_dump(),
@@ -929,8 +982,8 @@ def optimal_penetration(payload: PenetrationOptimizationRequest, request: Reques
 
 
 @app.post("/api/pdb")
-def pdb(payload: PdbRequest, request: Request) -> Dict[str, Any]:
-    return _run_calculation(
+async def pdb(payload: PdbRequest, request: Request) -> Dict[str, Any]:
+    return await _run_calculation(
         request, "pdb", payload,
         lambda: {"sequence": payload.sequence, "pdb": generate_helix_pdb(payload.sequence)},
         use_job_slot=False,
