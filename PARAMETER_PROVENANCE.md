@@ -34,7 +34,7 @@ helix_sd_i_4.txt      a6bca28056910c9e8f0431878e19b0d9970b34e9c86c873725fbdcda94
 
 ## Hydrophobicity
 
-Scoring and sequence descriptors use the Fauchère–Pliska scale, with Ser = −0.040 and Thr = 0.260. The scale values are listed in the [HELIQUEST methods documentation](https://heliquest.ipmc.cnrs.fr/HelpProcedure.htm).
+Backend scoring and API sequence descriptors use the Fauchère–Pliska scale, with Ser = −0.040 and Thr = 0.260. The scale values are listed in the [HELIQUEST methods documentation](https://heliquest.ipmc.cnrs.fr/HelpProcedure.htm).
 
 ## Loading, calibration and tests
 
