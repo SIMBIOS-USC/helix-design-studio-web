@@ -707,8 +707,8 @@ def _build_specificity_candidate_payload(
     target_builder: HamiltonianBuilder,
     off_builders: List[HamiltonianBuilder],
 ) -> Dict[str, Any]:
-    # Report the very same Hamiltonians used during the search. Rebuilding here
-    # used to change both the calibration and the interfacial orientation.
+    # Use the search Hamiltonians so reported scores retain the same
+    # calibration and orientation.
     n_random = 3000
     calibration_seed = int(target_builder.kwargs.get("zscore_seed", 42))
     target_ref = random_reference(

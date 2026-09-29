@@ -45,14 +45,14 @@ def _load_labeled_matrix_file(filename: str) -> Tuple[np.ndarray, List[str]]:
 
 
 def _load_energy_matrix_file() -> Tuple[np.ndarray, List[str]]:
-    """Load MJ; preserve the inherited upper-triangle symmetrization rule."""
+    """Load MJ and symmetrize its upper triangle, preserving the diagonal."""
     raw, symbols = _load_labeled_matrix_file("mj_matrix.txt")
     upper = np.triu(raw, k=1)
     return np.diag(np.diag(raw)) + upper + upper.T, symbols
 
 
 def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
-    """Load the inherited directional helix-pair propensity matrix."""
+    """Load the directional helix-pair propensity matrix."""
     return _load_labeled_matrix_file("helix_pairs_prop.txt")
 
 

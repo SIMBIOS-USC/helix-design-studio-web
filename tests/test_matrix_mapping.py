@@ -61,7 +61,7 @@ class MatrixMappingTests(unittest.TestCase):
                             self.assertEqual(actual[i, j], lookup[aa, bb])
 
     def test_known_raw_neighbor_scores_across_alphabets(self):
-        # Values transcribed from the inherited numeric tables. Direction is
+        # Values from the parameter tables. Direction is
         # preserved: M1(A,L)=1.575 whereas M1(L,A)=1.392.
         expected = {
             "AAAAA": 2.734,

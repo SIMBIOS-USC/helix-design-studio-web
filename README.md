@@ -2,37 +2,38 @@
 
 [Web server](https://helix.simbioslab.com/) · [Method article](https://doi.org/10.1021/acs.jctc.6c01278) · [Citation](CITATION.cff)
 
-Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. It provides sequence scoring, single and family design, comparison between environments, specificity design, penetration scans and idealized PDB export through a browser and a FastAPI API.
+Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Scientific status (0.2.0rc1):** this review candidate corrects residue-label mapping and preserves search/display calibration. Two malformed parameter-table headers have been reconstructed provisionally; their source/order still needs author confirmation. See [PARAMETER_PROVENANCE.md](PARAMETER_PROVENANCE.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Passing software tests establishes implementation consistency, not scientific validity. This candidate is not yet a validated submission release.
+**Parameter status:** the residue order of the M3/M4 tables is provisional. See [parameter definitions](PARAMETER_PROVENANCE.md) and [model limitations](KNOWN_ISSUES.md) before interpreting scores or designs.
 
-## Run locally
+## Installation
 
-Python **3.12** is the tested interpreter. No database, GPU, quantum software, Node.js or external graphics program is required. The molecular viewer is included locally.
+Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering requires a WebGL-capable browser; the viewer is included in the application. Local execution has been tested on macOS with Python 3.12.
 
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
+git switch publication-draft
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. The interface includes a Guide and examples. API documentation is at `/docs`; the schema is at `/openapi.json`. The first calculation for a new calibration configuration can take longer because it samples reference sequences and caches their statistics.
+On Windows, activate the environment with `.venv\Scripts\activate`.
 
-On Windows, activate the environment with `.venv\Scripts\activate`. Cross-platform installation and container instructions are provided; the initial local verification was performed on macOS with Python 3.12.
+Open **http://127.0.0.1:8000**. The interface includes a Guide and examples. API documentation is at `/docs`; the schema is at `/openapi.json`. The first calculation for a calibration configuration samples random sequences and caches the component statistics for subsequent requests.
 
-## Run in Docker
+## Docker
 
 ```bash
 docker build -t helix-design-studio .
 docker run --rm -p 8000:8000 helix-design-studio
 ```
 
-The image runs as an unprivileged user and serves port 8000 by default. `PORT` changes its internal listening port; adjust the port mapping accordingly. Container execution must be verified on the deployment host.
+The image runs as an unprivileged user. Set `PORT` to change its internal listening port and adjust the port mapping accordingly. Container execution has not been tested.
 
-## Reproduce a small example
+## API example and reproducibility
 
 With the server running:
 
@@ -42,16 +43,16 @@ curl --fail-with-body http://127.0.0.1:8000/api/score \
   --data @examples/score.json
 ```
 
-The example uses small calibration and reference samples for a quick execution check. It is not a benchmark or a recommended scientific sampling protocol. Record the source commit, request parameters, residue alphabet **including its order**, seed and dependency versions when reporting results. Responses include calibration/reference seeds and an orientation-mode field. Score/Compare automatically align interfacial sequences to the hydrophobic moment; search outputs retain fixed search geometry. A subsequent Score request is a distinct evaluation protocol.
+This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Record the source commit, complete request, residue alphabet **including its order**, random seeds and dependency versions when reporting results. Responses include calibration/reference seeds and orientation mode. Score and Compare align interfacial sequences to the hydrophobic moment; search outputs retain their fixed search geometry. Rescoring a design through Score uses a different evaluation protocol.
 
-## Verification
+## Tests
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-The tests exercise the computational API, streaming responses, static assets, idealized PDB export, invalid-input handling and disabled usage logging. Regression tests check raw-score invariance to alphabet order, matrix validation and agreement between search objectives and displayed scores. Small test inputs check execution and consistency, not scientific convergence or performance at the web limits.
+The tests cover the computational API, streaming responses, static assets, idealized PDB export, invalid inputs and disabled usage logging. Regression tests cover residue-label mapping, malformed-matrix rejection, cache invalidation and agreement between search objectives and reported scores. They check implementation behavior; they do not establish sampling convergence or experimental validity.
 
 ## Configuration and data
 
@@ -59,31 +60,27 @@ The tests exercise the computational API, streaming responses, static assets, id
 | --- | --- | --- |
 | `HELIX_CACHE_DIR` | `helix-design-studio-cache` in the OS temporary directory | Generated calibration statistics. |
 | `HELIX_USAGE_LOGGING` | `0` | Set to `1` to enable local usage-event logging. |
-| `HELIX_VAR_DIR` | A directory in the OS temporary directory | Location of optional usage logs; choose a persistent directory if needed. |
-| `QFOLD_CODE_DIR` | This repository's `Code/` | Optional explicit runtime override; normally unnecessary. |
+| `HELIX_VAR_DIR` | A directory in the OS temporary directory | Optional usage logs; choose a persistent directory if required. |
+| `QFOLD_CODE_DIR` | This repository's `Code/` | Override the location of scoring modules and parameter tables. |
 | `PORT` | `8000` | Container listening port. |
 
-With logging disabled, no application usage-event log or persistent browser visitor identifier is created. When enabled, events include a browser identifier, hashes of IP address, user agent and sequence, request settings, origin/referrer, timing and error information. Hashes are not a guarantee of anonymity. These events remain local to the server; no external analytics service is used. Server/proxy access logs are configured separately.
+With logging disabled, the application creates no usage-event log or persistent browser visitor identifier. When enabled, events include a browser identifier, hashes of IP address, user agent and sequence, request settings, origin/referrer, timing and error information. Hashes do not guarantee anonymity. Events are stored on the server; server/proxy access logs are configured separately.
 
-`GET /api/health` reports service configuration and, when logging is enabled, recent aggregate failures. It is a service check, not a scientific validation check. Calibration caches are disposable; clear them after changes to scoring code or tables. No user logs, precomputed caches or generated results are distributed here.
+`GET /api/health` reports service configuration and, when logging is enabled, recent aggregate failures. Calibration caches are disposable; clear them after changing scoring code or parameter tables.
 
 ## Source layout
 
-- `app/`: API, classical search workflows and static browser interface.
-- `Code/`: scoring/calibration routines and the four runtime parameter tables.
-- `tests/` and `examples/`: small reproducible checks and an API example.
+- `app/`: API, search workflows and static browser interface.
+- `Code/`: scoring, calibration and four parameter tables.
+- `tests/` and `examples/`: automated checks and an API request example.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.
 
-This distribution excludes historical quantum backends, table-generation experiments, research datasets, manuscripts, private deployment scripts and source repository history. The production website is maintained separately; its running commit has not been verified against this snapshot. Changes introduced for this distribution are described in [PROVENANCE.md](PROVENANCE.md).
+## Citation and license
 
-## Citation and reuse
-
-If this software contributes to your research, please cite **the exact software version/commit** and the underlying method:
+Please cite the **software version or commit** used and the underlying method:
 
 Daniel Conde-Torres, Rebeca García-Fandiño and Ángel Piñeiro. *Environment-Conditioned Design of α-Helical Peptides*. Journal of Chemical Theory and Computation **22** (18), 9776–9789 (2026). [doi:10.1021/acs.jctc.6c01278](https://doi.org/10.1021/acs.jctc.6c01278).
 
-Software contributors are listed in [CITATION.cff](CITATION.cff). A software-paper citation and an archived software-release DOI can be added when available; neither is assigned by this repository. Citation is requested as scholarly practice, not as an additional restriction on the MIT license.
+Software contributors are listed in [CITATION.cff](CITATION.cff). Original project code is distributed under the [MIT license](LICENSE). Included components retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Institutional names and logos are excluded from the MIT grant. Citation is requested as scholarly practice, not as an additional license condition.
 
-Original project code is distributed under the [MIT license](LICENSE). Components carrying other licenses retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Institutional names and logos identify the project and are excluded from the MIT grant.
-
-Report reproducible problems through this repository's issue tracker, including the commit and request parameters. Do not include private sequences or usage logs in public reports.
+Report problems through the [issue tracker](https://github.com/SIMBIOS-USC/helix-design-studio-web/issues), including the commit, request parameters and steps to reproduce. Omit private sequences and usage logs from public reports.
