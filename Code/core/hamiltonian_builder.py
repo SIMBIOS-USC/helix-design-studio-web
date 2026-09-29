@@ -32,7 +32,7 @@ class HamiltonianBuilder:
         self.bits_per_pos = bits_per_pos
         self.n_qubits = n_qubits
         self.kwargs = kwargs
-        self.stats_cache_version = 3
+        self.stats_cache_version = 4
 
         # 1. Physicochemical properties
         self._init_properties()
@@ -53,6 +53,7 @@ class HamiltonianBuilder:
     def _stats_cache_payload(self, n_decoys: int) -> Dict[str, Any]:
         return {
             "stats_cache_version": self.stats_cache_version,
+            "matrix_hashes": self.matrix_hashes,
             "L": self.L,
             "amino_acids": self.amino_acids,
             "bits_per_pos": self.bits_per_pos,
@@ -131,7 +132,7 @@ class HamiltonianBuilder:
             'D': -0.77, 'E': -0.64, 'K': -0.99, 'R': -1.01, 'H':  0.13,
             'G':  0.00, 'A':  0.31, 'V':  1.22, 'L':  1.70, 'I':  1.80,
             'P':  0.72, 'M':  1.23, 'F':  1.79, 'W':  2.25, 'Y':  0.96,
-            'T': -0.04, 'S':  0.26, 'C':  1.54, 'N': -0.60, 'Q': -0.22
+            'S': -0.04, 'T':  0.26, 'C':  1.54, 'N': -0.60, 'Q': -0.22
         }
         # Cargas formales
         self.charges = {aa: 0 for aa in self.amino_acids}
@@ -141,17 +142,31 @@ class HamiltonianBuilder:
             self.charges[aa] = -1
 
     def _load_matrices_from_files(self):
-        """Carga MJ y matrices de vecinos estadísticos k=1,3,4."""
-        mj_full, mj_symbols = _load_energy_matrix_file()
-        aa_to_idx = {aa: i for i, aa in enumerate(mj_symbols)}
-        self.mj_matrix = np.zeros((self.n_aa, self.n_aa))
-        for i, aa1 in enumerate(self.amino_acids):
-            for j, aa2 in enumerate(self.amino_acids):
-                self.mj_matrix[i, j] = mj_full[aa_to_idx[aa1], aa_to_idx[aa2]]
+        """Map every labelled source matrix into the requested alphabet order."""
+        if not self.amino_acids or len(set(self.amino_acids)) != self.n_aa:
+            raise ValueError("The amino-acid alphabet must be nonempty and unique")
+        self.matrix_hashes = {}
+        loaders = {
+            "mj_matrix": _load_energy_matrix_file,
+            "M1": _load_first_neighbors_matrix_file,
+            "M3": _load_third_neighbors_matrix_file,
+            "M4": _load_fourth_neighbors_matrix_file,
+        }
+        for name, loader in loaders.items():
+            matrix, symbols = loader()
+            aa_to_idx = {aa: i for i, aa in enumerate(symbols)}
+            unknown = set(self.amino_acids) - set(symbols)
+            if unknown:
+                raise ValueError(f"Unknown residues in amino-acid alphabet: {sorted(unknown)}")
+            indices = [aa_to_idx[aa] for aa in self.amino_acids]
+            setattr(self, name, matrix[np.ix_(indices, indices)].copy())
 
-        self.M1, _ = _load_first_neighbors_matrix_file()
-        self.M3, _ = _load_third_neighbors_matrix_file()
-        self.M4, _ = _load_fourth_neighbors_matrix_file()
+            # Include the full labelled numerical table in cache identity, not
+            # just the selected subset. Explicit little endian gives a stable
+            # digest across platforms. MJ is hashed after symmetrization.
+            digest = hashlib.sha256(" ".join(symbols).encode("ascii"))
+            digest.update(np.asarray(matrix, dtype="<f8").tobytes(order="C"))
+            self.matrix_hashes[name] = digest.hexdigest()
 
     # ------------------------------------------------------------------
     # Entorno (Helical Wheel)

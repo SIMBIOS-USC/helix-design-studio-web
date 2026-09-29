@@ -40,7 +40,7 @@ VAR_DIR = Path(
 ).expanduser()
 USAGE_LOG_PATH = VAR_DIR / "usage_events.jsonl"
 
-app = FastAPI(title="Helix Design Studio", version="0.1.0")
+app = FastAPI(title="Helix Design Studio", version="0.2.0rc1")
 
 app.add_middleware(
     CORSMiddleware,

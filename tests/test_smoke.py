@@ -1,7 +1,8 @@
 """Offline runtime checks, not validation of the scientific model.
 
 Run from the repository root: python -m unittest discover -s tests -v -b
-The expected failure covers the matrix-indexing issue in KNOWN_ISSUES.md.
+Matrix-indexing regression checks are conditional on the provisional header
+reconstruction described in PARAMETER_PROVENANCE.md.
 """
 
 import io
@@ -183,8 +184,7 @@ class WebSmokeTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/usage-metrics").status_code, 200)
         self.assertFalse((Path(self.temporary.name) / "var" / "usage_events.jsonl").exists())
 
-    @unittest.expectedFailure
-    def test_known_neighbor_score_alphabet_order_invariance(self):
+    def test_neighbor_score_alphabet_order_invariance(self):
         """Raw chemical scores should not change when only alphabet order changes."""
         alphabet = self.engine.DEFAULT_ALPHABET_16
         reordered = ["P"] + [aa for aa in alphabet if aa != "P"]

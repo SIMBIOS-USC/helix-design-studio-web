@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Known issue:** helix-neighbor scores depend on the order of the requested residue alphabet because of a matrix-indexing defect. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) before interpreting scores or designs.
+**Parameter status:** the residue order of the M3/M4 tables is provisional. See [parameter definitions](PARAMETER_PROVENANCE.md) and [model limitations](KNOWN_ISSUES.md) before interpreting scores or designs.
 
 ## Installation
 
@@ -13,6 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
+git switch publication-draft
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -42,7 +43,7 @@ curl --fail-with-body http://127.0.0.1:8000/api/score \
   --data @examples/score.json
 ```
 
-This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Record the source commit, complete request, residue alphabet **including its order**, random seeds and dependency versions when reporting results.
+This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Record the source commit, complete request, residue alphabet **including its order**, random seeds and dependency versions when reporting results. Responses include calibration/reference seeds and orientation mode. Score and Compare align interfacial sequences to the hydrophobic moment; search outputs retain their fixed search geometry. Rescoring a design through Score uses a different evaluation protocol.
 
 ## Tests
 
@@ -51,7 +52,7 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-The tests cover the computational API, streaming responses, static assets, idealized PDB export, invalid inputs and disabled usage logging. The alphabet-order regression test is marked as an expected failure for the defect described in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). They check implementation behavior; they do not establish sampling convergence or experimental validity.
+The tests cover the computational API, streaming responses, static assets, idealized PDB export, invalid inputs and disabled usage logging. Regression tests cover residue-label mapping, malformed-matrix rejection, cache invalidation and agreement between search objectives and reported scores. They check implementation behavior; they do not establish sampling convergence or experimental validity.
 
 ## Configuration and data
 
