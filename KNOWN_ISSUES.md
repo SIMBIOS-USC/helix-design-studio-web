@@ -1,16 +1,15 @@
-# Known scientific limitations
+# Known issues and model limitations
 
 ## Helix-neighbor matrix indexing
 
-The current `HamiltonianBuilder._load_matrices_from_files` uses residue labels to map the Miyazawa–Jernigan matrix, but discards the labels supplied with the three helix-neighbor tables (`M1`, `M3`, `M4`). Those tables are subsequently indexed by positions in the request's residue alphabet. Consequently, changing the alphabet order can change the raw helix-neighbor score of the **same chemical sequence**. The default design and scoring workflows also use different alphabets, so this can affect comparisons between workflows, rankings and selected sequences.
+`HamiltonianBuilder._load_matrices_from_files` maps the Miyazawa–Jernigan matrix by residue label but indexes M1/M3/M4 by positions in the requested residue alphabet. Changing alphabet order can therefore change the raw helix-neighbor score of the **same chemical sequence**. The design and scoring workflows use different default alphabets, which can affect comparisons, rankings and generated sequences.
 
-Additionally, the headers of `helix_sd_i_3.txt` and `helix_sd_i_4.txt` contain 22 symbols, including repeated Y and V, while their numeric matrices are 20×20. Correct row/column identities must be established from the parameter source before changing the mapping. The runtime tables and scoring equations have therefore been preserved in this initial source distribution rather than silently reconstructed.
-
-The expected-failure regression test documents the required alphabet-order invariance. Fixing this issue requires verifying table provenance/order, mapping by residue identity, checking all alphabets and rerunning the affected scientific comparisons. Keeping one alphabet order fixed is useful for reproducing this snapshot but **does not resolve the underlying defect**.
+The headers of `helix_sd_i_3.txt` and `helix_sd_i_4.txt` contain 22 symbols, including repeated Y and V, for 20 × 20 numeric matrices. Their row/column identities require verification against the parameter source. The expected-failure regression test documents the indexing defect. A fixed alphabet order allows reproducing a calculation but does not resolve the defect.
 
 ## Interpretation
 
-- Scores concern compatibility of sequences with an assumed alpha-helical state. They do not establish folding, binding affinity, membrane insertion, biological activity or experimental stability.
-- PDB export builds an ideal alpha helix using PeptideBuilder; it is not a structure prediction or an energy-minimized model.
-- Calibration and random-reference distributions depend on length, alphabet, environment, sample size and seed. Scores from distinct protocols should not be assumed directly comparable.
-- Automated execution tests and agreement with the source snapshot establish implementation continuity only. They do not validate the parameter tables or the scientific conclusions.
+- Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
+- PDB export constructs an ideal helix; it does not predict or minimize a structure.
+- The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
+- Calibration and reference distributions depend on sequence length, alphabet, environment, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
+- Execution tests do not establish parameter provenance or predictive validity.

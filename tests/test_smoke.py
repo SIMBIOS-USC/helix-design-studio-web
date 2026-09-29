@@ -1,8 +1,7 @@
 """Offline runtime checks, not validation of the scientific model.
 
 Run from the repository root: python -m unittest discover -s tests -v -b
-The expected failure records the unresolved matrix-indexing issue described
-in KNOWN_ISSUES.md; it must be revisited when that issue is corrected.
+The expected failure covers the matrix-indexing issue in KNOWN_ISSUES.md.
 """
 
 import io

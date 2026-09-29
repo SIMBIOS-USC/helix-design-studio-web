@@ -25,7 +25,7 @@ def _load_energy_matrix_file() -> Tuple[np.ndarray, List[str]]:
     The file is read as a full 20x20 matrix where the upper triangle
     and diagonal contain the correct interaction values.
 
-    FIXED: Correctly constructs the final symmetric matrix (M=M_diag + M_upper + M_upper.T).
+    Constructs the symmetric matrix (M=M_diag + M_upper + M_upper.T).
     """
     path = _construct_resource_path("mj_matrix.txt")
 

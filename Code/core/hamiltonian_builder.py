@@ -1,8 +1,4 @@
-"""Classical scoring and calibration used by the Helix Design Studio web app.
-
-The unused Pauli-operator construction backend has been removed from this
-web-only distribution; the scoring and calibration routines are unchanged.
-"""
+"""Classical sequence scoring and random-ensemble calibration for Helix Design Studio."""
 
 import hashlib
 import json
@@ -20,16 +16,7 @@ from data_loaders.energy_matrix_loader import (
 
 
 class HamiltonianBuilder:
-    """
-    Builds the protein Hamiltonian using intensive property scaling
-    and Z-score normalization (Goldstein-Wolynes method).
-
-    Fiel a:
-      - Escalado intensivo (Imagen 3 / Sec. Thermodynamic Consistency)
-      - Z-score real con N decoys aleatorios por término
-      - Momento hidrofóbico con componentes x e y  (|μ_H|² = μx² + μy²)
-      - Helix-neighbors sin signo negativo arbitrario
-    """
+    """Length-scaled Hamiltonian components with random-ensemble Z-score calibration."""
 
     def __init__(
         self,
@@ -47,7 +34,7 @@ class HamiltonianBuilder:
         self.kwargs = kwargs
         self.stats_cache_version = 3
 
-        # 1. Propiedades físico-químicas (Tablas 1 y 2 del paper)
+        # 1. Physicochemical properties
         self._init_properties()
 
         # 2. Matrices MJ y vecinos estadísticos k=1,3,4
@@ -131,7 +118,6 @@ class HamiltonianBuilder:
     def _init_properties(self):
         """
         Pace-Scholtz (hélice) y Fauchère-Pliska (hidrofobicidad).
-        Tabla 1 y Tabla 2 del paper.
         """
         # Propensión a hélice (kcal/mol) — menor valor = mayor propensión
         self.h_alpha = {
@@ -185,7 +171,7 @@ class HamiltonianBuilder:
         return "membrane" if abs(angle) <= half_width else "water"
 
     # ------------------------------------------------------------------
-    # Z-score real  (Sec. 2 del paper: Goldstein 1992)
+    # Random-ensemble Z-score calibration
     # ------------------------------------------------------------------
 
     def _raw_helix_local(self, seq: List[int]) -> float:
@@ -209,10 +195,10 @@ class HamiltonianBuilder:
         """
         Actua SOLO en agua. Premio UNIDIRECCIONAL: solo favorece la carga
         OPUESTA a sigma, nunca penaliza la carga del mismo signo.
-          neg (sigma=-1): K,R,H en agua -> min((-1)(+1), 0) = -1  FAV
+          neg (sigma=-1): K,R   en agua -> min((-1)(+1), 0) = -1  FAV
                           D,E   en agua -> min((-1)(-1), 0) =  0  NEUTRO
           pos (sigma=+1): D,E   en agua -> min((+1)(-1), 0) = -1  FAV
-                          K,R,H en agua -> min((+1)(+1), 0) =  0  NEUTRO
+                          K,R   en agua -> min((+1)(+1), 0) =  0  NEUTRO
         Residuos neutros (q=0): sin efecto en cualquier caso.
         """
         scale = 1.0 / self.L
@@ -281,7 +267,6 @@ class HamiltonianBuilder:
     def _calibrate_z_scores(self, n_decoys: int) -> Dict[str, Tuple[float, float]]:
         """
         Estima μ y σ para cada término evaluando n_decoys secuencias aleatorias.
-        Implementación fiel al paper (Goldstein et al. 1992, Sec. 2.2).
         """
         rng = np.random.default_rng(self.kwargs.get('zscore_seed', 42))
 
@@ -316,6 +301,6 @@ class HamiltonianBuilder:
         return stats
 
     def _apply_z_score(self, term_name: str, raw_energy: float) -> float:
-        """H' = (H - μ) / σ  (Ec. Z-score del paper)."""
+        """H' = (H - μ) / σ."""
         mu, sigma = self.stats.get(term_name, (0.0, 1.0))
         return (raw_energy - mu) / sigma
