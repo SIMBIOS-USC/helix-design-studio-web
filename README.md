@@ -28,7 +28,7 @@ docker build -t helix-design-studio .
 docker run --rm -p 8000:8000 helix-design-studio
 ```
 
-The image runs as an unprivileged user. Set `PORT` to change its internal listening port and adjust the port mapping accordingly. Container execution has not been tested.
+The image runs as an unprivileged user and defines a health check. Set `PORT` to change its internal listening port and adjust the port mapping accordingly, `WEB_CONCURRENCY` to run several worker processes, and `FORWARDED_ALLOW_IPS` to the address of the reverse proxy whose `X-Forwarded-For` header should be trusted. Calibration caches and optional usage logs are written to `/tmp/helix-cache` and `/tmp/helix-usage`; mount volumes there (for example `-v helix-cache:/tmp/helix-cache`) to keep them across container restarts. Container execution has not been tested.
 
 ## API example and reproducibility
 
@@ -47,6 +47,7 @@ This example uses small calibration and reference samples for a quick execution 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
 - In interfacial environments every evaluated sequence (query, calibration decoys, random references and search proposals) is oriented with its own hydrophobic moment, so all of them are compared under the same rule. The effective wheel phase is reported with each result.
 - Helix-pair propensities *P* enter the energy as −ln *P*; i,i+3 and i,i+4 tables are energies (negative values are stabilizing). All tables are indexed by residue label.
+- The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
 - Calibration and reference distributions depend on sequence length, alphabet, environment, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
@@ -72,10 +73,10 @@ The tests cover the computational API, streaming responses, static assets, ideal
 | `HELIX_USAGE_LOGGING` | `0` | Set to `1` to enable local usage-event logging. |
 | `HELIX_VAR_DIR` | A directory in the OS temporary directory | Optional usage logs; choose a persistent directory if required. |
 | `HELIX_LOG_HASH_KEY` | Random per process | Secret key for the hashes stored in usage logs; set it to keep hashes comparable across restarts. |
-| `QFOLD_CODE_DIR` | This repository's `Code/` | Override the location of scoring modules and parameter tables. |
+| `HELIX_CODE_DIR` | This repository's `Code/` | Override the location of scoring modules and parameter tables (`QFOLD_CODE_DIR` is accepted as a legacy name). |
 | `PORT` | `8000` | Container listening port. |
 
-With logging disabled, the application creates no usage-event log or persistent browser visitor identifier. When enabled, events include a random browser identifier, keyed hashes (HMAC-SHA256) of IP address, user agent and sequences, request settings, truncated origin/referrer, timing, HTTP status and error messages. Hashes do not guarantee anonymity. Events are stored on the server; server/proxy access logs are configured separately.
+With logging disabled, the application creates no usage-event log or persistent browser visitor identifier. The visit and run counters shown when logging is enabled are informational: they are reported by browsers and are not protected against inflation. When enabled, events include a random browser identifier, keyed hashes (HMAC-SHA256) of IP address, user agent and sequences, request settings, truncated origin/referrer, timing, HTTP status and error messages. Hashes do not guarantee anonymity. Events are stored on the server; server/proxy access logs are configured separately.
 
 `GET /api/health` reports service configuration and, when logging is enabled, recent server-side failures (HTTP 5xx); it returns 503 while such failures are present in the requested window. Calibration caches are keyed by the parameter tables and settings; they are disposable and can be cleared at any time.
 

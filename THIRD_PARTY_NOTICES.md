@@ -4,13 +4,13 @@ The root MIT license applies to original project code and documentation. It does
 
 ## Included software
 
-- **3Dmol.js 2.4.2**, copyright University of Pittsburgh and contributors, is distributed under BSD-3-Clause. Its license includes notices for GLmol, Three.js and jQuery. The complete upstream text is preserved in [LICENSES/3Dmol.txt](LICENSES/3Dmol.txt), with the companion bundle notice in `app/static/3Dmol-min.js.LICENSE.txt`.
-- `Code/data_loaders/__init__.py` and `Code/core/resources/__init__.py` retain their original **IBM 2021, 2022 / Apache-2.0** notices. The Apache license is included in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
+- **3Dmol.js 2.4.2**, copyright University of Pittsburgh and contributors, is distributed under BSD-3-Clause. Its license includes notices for GLmol, Three.js and jQuery. The complete upstream text is preserved in [LICENSES/3Dmol.txt](LICENSES/3Dmol.txt), with the companion bundle notice in `app/static/3Dmol-min.js.LICENSE.txt`. The bundle also contains pako (MIT and zlib), UPNG.js (MIT), iobuffer (MIT) and netcdfjs (MIT); their notices are reproduced in [LICENSES/3Dmol-bundled-dependencies.txt](LICENSES/3Dmol-bundled-dependencies.txt).
+- `Code/data_loaders/energy_matrix_loader.py` derives from the IBM Qiskit protein-folding data loaders and carries the original **IBM 2021, 2022 / Apache-2.0** notice together with a modification notice. `Code/core/resources/mj_matrix.txt` is the Miyazawa–Jernigan table distributed with Qiskit under the same license. `Code/data_loaders/__init__.py` and `Code/core/resources/__init__.py` retain their original IBM notices. The Apache license is included in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 - Python dependencies are installed separately from the package index and retain their respective upstream licenses; they are not vendored in this repository.
 
 ## Parameter provenance
 
-References for the scoring components are listed below. The numerical provenance of the helix-neighbor tables is not independently verified; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+References for the scoring components are listed below. All tables are looked up by residue label; their headers are validated when they are loaded.
 
 - `mj_matrix.txt`: Miyazawa S, Jernigan RL. *Residue–residue potentials with a favorable contact pair term and an unfavorable high packing density term, for simulation and threading*. J Mol Biol **256**, 623–644 (1996), Table 3. [doi:10.1006/jmbi.1996.0114](https://doi.org/10.1006/jmbi.1996.0114).
 - Helix-neighbor tables: related reference: Nacar C. *Propensities of Amino Acid Pairings in Secondary Structure of Globular Proteins*. Protein J **39**, 21–32 (2020). [doi:10.1007/s10930-020-09880-6](https://doi.org/10.1007/s10930-020-09880-6). The exact transformation and row/column provenance of all three supplied tables remain to be verified; see `KNOWN_ISSUES.md`.

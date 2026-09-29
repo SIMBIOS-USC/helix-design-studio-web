@@ -281,8 +281,12 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_usage_logging_disabled(self):
-        self.assertEqual(self.client.post("/api/visit").status_code, 200)
-        self.assertEqual(self.client.get("/api/usage-metrics").status_code, 200)
+        from app import main
+
+        self.assertFalse(main.USAGE_LOGGING_ENABLED)
+        self.assertEqual(self.client.post("/api/visit", headers={"X-Anonymous-Id": "visitor"}).status_code, 200)
+        self.assertEqual(self.client.get("/api/usage-metrics").json()["total_visits"], 0)
+        self.assertFalse(main.USAGE_LOG_PATH.exists())
         self.assertFalse((Path(self.temporary.name) / "var" / "usage_events.jsonl").exists())
 
     def test_raw_terms_do_not_depend_on_alphabet_order(self):
