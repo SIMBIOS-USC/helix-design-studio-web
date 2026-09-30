@@ -40,7 +40,7 @@ curl --fail-with-body http://127.0.0.1:8000/api/score \
   --data @examples/score.json
 ```
 
-This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Record the source commit, complete request, residue alphabet (its order determines the random streams used for calibration and search), random seeds and dependency versions when reporting results.
+This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Every result includes a `provenance` block with the software version, the parameter-set checksum, the complete request, the seed protocol and the Python and NumPy versions; keep it with reported results together with the dependency versions. The residue alphabet order determines the random streams used for calibration and search. Changes between versions and their measured effects are listed in the [changelog](CHANGELOG.md).
 
 ## Model scope and limitations
 
@@ -88,6 +88,7 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 - `app/`: API, search workflows and static browser interface.
 - `Code/`: scoring, calibration and four parameter tables.
 - `tests/` and `examples/`: automated checks and an API request example.
+- `tools/measure_changes.py`: measures the numerical effect of each model change between versions.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.
 
 ## Citation and license
