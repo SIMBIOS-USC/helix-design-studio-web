@@ -75,6 +75,7 @@ LOG_HASH_KEY = (os.environ.get("HELIX_LOG_HASH_KEY") or secrets.token_hex(32)).e
 
 logger = logging.getLogger("helix_design_studio")
 
+
 class RequestLimitsMiddleware:
     """Rechaza cuerpos grandes antes de parsearlos y añade cabeceras de seguridad."""
 
@@ -90,7 +91,6 @@ class RequestLimitsMiddleware:
             await JSONResponse({"detail": "Request body too large."}, status_code=413)(scope, receive, send)
             return
         received = 0
-        response_started = False
 
         async def limited_receive() -> Dict[str, Any]:
             nonlocal received
@@ -98,13 +98,12 @@ class RequestLimitsMiddleware:
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > MAX_REQUEST_BYTES:
-                    raise _BodyTooLarge()
+                    # HTTPException: FastAPI convierte otras excepciones del cuerpo en un 400 genérico.
+                    raise HTTPException(status_code=413, detail="Request body too large.")
             return message
 
         async def secured_send(message: Dict[str, Any]) -> None:
-            nonlocal response_started
             if message["type"] == "http.response.start":
-                response_started = True
                 headers = list(message.get("headers", []))
                 headers += [
                     (b"x-content-type-options", b"nosniff"),
@@ -116,18 +115,12 @@ class RequestLimitsMiddleware:
                 message = {**message, "headers": headers}
             await send(message)
 
-        try:
-            await self.app(scope, limited_receive, secured_send)
-        except _BodyTooLarge:
-            if not response_started:
-                await JSONResponse({"detail": "Request body too large."}, status_code=413)(scope, receive, send)
+        await self.app(scope, limited_receive, secured_send)
 
 
-class _BodyTooLarge(Exception):
-    pass
+APP_VERSION = "1.0.0"
 
-
-app = FastAPI(title="Helix Design Studio", version="0.1.0")
+app = FastAPI(title="Helix Design Studio", version=APP_VERSION)
 app.add_middleware(RequestLimitsMiddleware)
 
 if CORS_ORIGINS:
@@ -148,6 +141,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         for error in exc.errors()
     ]
     return JSONResponse(status_code=422, content={"detail": errors})
+
 
 MAX_SEQUENCE_LENGTH = 40
 MAX_ALLOWED_RESIDUES = 20
@@ -315,13 +309,25 @@ def _request_summary(payload: Any) -> Dict[str, Any]:
     return summary
 
 
+def _directory_is_private(path: Path) -> bool:
+    """Propio del usuario del servicio y no escribible por otros (el valor por defecto está en /tmp)."""
+    info = path.stat()
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        return False
+    return not info.st_mode & 0o022
+
+
 def _append_usage_event(event: Dict[str, Any]) -> None:
     if not USAGE_LOGGING_ENABLED:
         return
     # Un fallo del registro de uso no debe hacer fallar la peticion del usuario.
     try:
         VAR_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        descriptor = os.open(USAGE_LOG_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        if not _directory_is_private(VAR_DIR):
+            logger.warning("Usage log directory is not private to this user; event not written: %s", VAR_DIR)
+            return
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(USAGE_LOG_PATH, flags, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, ensure_ascii=True) + "\n")
     except OSError as exc:
@@ -368,7 +374,11 @@ class UsageLogIndex:
         if stamp.tzinfo is None:
             stamp = stamp.replace(tzinfo=timezone.utc)
         # Los errores de validacion del cliente no indican un fallo del servicio.
-        server_error = event.get("status") == "error" and int(event.get("http_status", 500)) >= 500
+        try:
+            http_status = int(event.get("http_status", 500))
+        except (TypeError, ValueError):
+            http_status = 500
+        server_error = event.get("status") == "error" and http_status >= 500
         self.recent.append((stamp, str(event.get("endpoint", "unknown")), server_error))
 
     def refresh(self) -> None:
@@ -380,18 +390,21 @@ class UsageLogIndex:
         file_id = (info.st_dev, info.st_ino)
         if file_id != self.file_id or info.st_size < self.offset:
             self._reset(file_id)  # fichero nuevo, rotado o truncado
-        with self.path.open("rb") as handle:
-            handle.seek(self.offset)
-            for raw in handle:
-                if not raw.endswith(b"\n"):
-                    break  # línea a medio escribir: se leerá en la próxima consulta
-                self.offset += len(raw)
-                try:
-                    event = json.loads(raw)
-                except ValueError:
-                    continue
-                if isinstance(event, dict):
-                    self._ingest(event)
+        try:
+            with self.path.open("rb") as handle:
+                handle.seek(self.offset)
+                for raw in handle:
+                    if not raw.endswith(b"\n"):
+                        break  # línea a medio escribir: se leerá en la próxima consulta
+                    self.offset += len(raw)
+                    try:
+                        event = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict):
+                        self._ingest(event)
+        except OSError as exc:
+            logger.warning("Could not read usage log: %s", exc)
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=MAX_HEALTH_WINDOW_MINUTES)
         while self.recent and self.recent[0][0] < cutoff:
             self.recent.popleft()
@@ -729,6 +742,7 @@ def health(window_minutes: int = DEFAULT_HEALTH_WINDOW_MINUTES) -> JSONResponse:
     body: Dict[str, Any] = {
         "status": "degraded" if degraded else "ok",
         "service": "Helix Design Studio",
+        "version": APP_VERSION,
         "usage_logging": USAGE_LOGGING_ENABLED,
         "recent": recent,
         "alphabet_default": DEFAULT_ALPHABET_16,

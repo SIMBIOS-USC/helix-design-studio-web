@@ -213,6 +213,9 @@ class WebSmokeTests(unittest.TestCase):
         response = self.client.post("/api/score", content=b"{" + b" " * 70000 + b"}",
                                     headers={"Content-Type": "application/json"})
         self.assertEqual(response.status_code, 413)
+        chunked = (part for part in [b'{"sequence": "ALKD", "pad": "'] + [b"x" * 4096] * 20 + [b'"}'])
+        response = self.client.post("/api/score", content=chunked, headers={"Content-Type": "application/json"})
+        self.assertEqual(response.status_code, 413)
         page = self.client.get("/")
         self.assertEqual(page.headers["x-content-type-options"], "nosniff")
         self.assertIn("frame-ancestors 'none'", page.headers["content-security-policy"])

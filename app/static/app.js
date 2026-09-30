@@ -35,30 +35,6 @@ const REFERENCE_PEPTIDES = {
     },
     note: 'Alanine-rich benchmark that emphasizes intrinsic helical propensity in water more than membrane amphipathicity.',
   },
-  gb1_helix: {
-    name: 'GB1 Helix Fragment',
-    category: 'Water-stable designed helices',
-    sequence: 'EELKKKLAEELK',
-    family: 'GB1-derived model helix fragment',
-    profile: {
-      water: 'compact, water-stable helix fragment',
-      apolar: 'helical but not a hydrophobic benchmark',
-      anionic: 'cationic face present, though not a canonical AMP',
-    },
-    note: 'A classic short helix model used to probe aqueous helicity and Glu/Lys stabilization in a compact sequence.',
-  },
-  alpha3d: {
-    name: 'α3D Helix Segment',
-    category: 'Water-stable designed helices',
-    sequence: 'GSWAEFKQRLAAIKTRQALKKELG',
-    family: 'de novo designed aqueous helix bundle segment',
-    profile: {
-      water: 'strong designed helix in water',
-      apolar: 'helical but not optimized for hydrophobic insertion',
-      anionic: 'cationic/amphipathic tendencies, but not an AMP archetype',
-    },
-    note: 'A de novo designed helical benchmark from aqueous bundle design, useful as a high-quality water-stable reference.',
-  },
   ll37: {
     name: 'LL-37',
     category: 'Membrane-active amphipathic helices',
@@ -1466,7 +1442,7 @@ function setFormBusy(form, busy) {
   form.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-function bindForm(formId, resultId, builder, renderer) {
+function bindForm(formId, resultId, builder, renderer, onReset = null) {
   const form = $(`#${formId}`);
   const result = $(`#${resultId}`);
   let controller = null;
@@ -1483,6 +1459,7 @@ function bindForm(formId, resultId, builder, renderer) {
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => current.abort());
     loading.appendChild(cancel);
+    if (onReset) onReset();
     result.innerHTML = '';
     result.appendChild(loading);
     try {
@@ -1748,7 +1725,7 @@ bindForm('pdb-form', 'pdb-result', async (fd, signal) => postJSON('/api/pdb', {
       </div>
     </div>
   `;
-});
+}, releasePdbViewer);
 
 const familyForm = $('#family-form');
 const familyResult = $('#family-result');
