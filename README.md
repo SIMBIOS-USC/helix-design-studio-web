@@ -45,8 +45,9 @@ This example uses small calibration and reference samples for a quick execution 
 ## Model scope and limitations
 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
-- In interfacial environments every evaluated sequence (query, calibration decoys, random references and search proposals) is oriented with its own hydrophobic moment, so all of them are compared under the same rule. The effective wheel phase is reported with each result.
-- Helix-pair propensities *P* enter the energy as −ln *P*; i,i+3 and i,i+4 tables are energies (negative values are stabilizing). All tables are indexed by residue label.
+- Searches (Design, Family, Cross-Design, Specificity) optimize the fixed-geometry Hamiltonian: the membrane sector keeps the preset wheel phase, so the environment and charge terms are single-residue terms and the electrostatic, pairwise and helix-neighbor terms are pair terms. Their rankings and margins use this design geometry.
+- The standard score (Score, Compare, Penetration, and the score reported for designed sequences) orients each sequence in an interfacial environment by its own hydrophobic moment; the random reference sequences and calibration decoys are oriented by the same rule. With this orientation the environment terms depend on the whole sequence. Design results report both the standard score and the design-geometry energy.
+- Helix-pair propensities *P* enter the energy as −ln *P*; i,i+3 and i,i+4 tables are energies (negative values are stabilizing). All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
 - The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.

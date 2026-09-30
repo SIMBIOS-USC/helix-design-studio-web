@@ -461,7 +461,7 @@ function compareSpecificityCandidates(a, b) {
   const objective = (item) => Math.round(Number(item.specificity_design?.objective || 0) * 1e8) / 1e8;
   return objective(a) - objective(b)
     || Number(b.specificity_design?.z_score_margin || 0) - Number(a.specificity_design?.z_score_margin || 0)
-    || Number(a.target_environment?.z_score || 0) - Number(b.target_environment?.z_score || 0)
+    || Number(designZ(a.target_environment)) - Number(designZ(b.target_environment))
     || String(a.sequence).localeCompare(String(b.sequence));
 }
 
@@ -905,8 +905,10 @@ const HELP_TEXT = {
     'Alphabet size': 'Number of amino-acid types allowed during scoring or design.',
     'Joint objective': 'Cross-design objective combining both environments and the λgap penalty.',
     'λgap': 'Penalty weight that discourages sequences from behaving too differently across environments.',
-    'Model energy A': 'Hamiltonian energy in dimensionless model units for the first environment.',
-    'Model energy B': 'Hamiltonian energy in dimensionless model units for the second environment.',
+    'Design-geometry energy A': 'Energy of the designed sequence in the first environment with the fixed wheel geometry optimized by the search.',
+    'Design-geometry energy B': 'Energy of the designed sequence in the second environment with the fixed wheel geometry optimized by the search.',
+    'Design-geometry energy': 'Energy with the fixed wheel geometry that the search optimized. The standard score orients the sequence by its own hydrophobic moment, like the Score panel.',
+    'Design-geometry Z': 'Z-score with the fixed wheel geometry optimized by the search, against random sequences evaluated the same way.',
     'Specificity objective': 'Optimization target for one-vs-rest design. Lower values mean the target stays more favorable relative to the best competing off-target.',
     'λ balance': 'Interpolation between the hard one-vs-rest limit and target-only optimization. λ=0 gives the strongest selectivity pressure; λ=1 reduces the objective to Htarget alone.',
     'Energy margin': 'Difference between the worst competing off-target model energy and the target model energy. Larger positive values mean cleaner target-vs-off-target separation.',
@@ -927,6 +929,12 @@ const HELP_TEXT = {
     abs_mu_h_per_residue: 'Absolute transverse hydrophobic moment divided by sequence length, useful for comparing helices of different sizes.',
   },
 };
+
+function designGeometryCards(data) {
+  const design = data.design_geometry;
+  if (!design || !isInterfacialPreset(data.environment?.preset)) return '';
+  return `${statCard('Design-geometry energy', Number(design.energy).toFixed(3))}${statCard('Design-geometry Z', Number(design.z_score).toFixed(3))}`;
+}
 
 function settingsLine(data) {
   const env = data.environment || {};
@@ -1035,6 +1043,7 @@ function renderScore(data) {
         ${statCard('Z-score', data.z_score.toFixed(3))}
         ${statCard('Percentile (lower better)', `${data.percentile_lower_is_better.toFixed(1)}%`)}
         ${statCard('Net charge', chargeValue)}
+        ${designGeometryCards(data)}
       </div>
       ${settingsLine(data)}
       ${energyUnitNote()}
@@ -1066,6 +1075,7 @@ function renderCompareEnvironmentCard(data, label) {
         ${statCard('Z-score', data.z_score.toFixed(3))}
         ${statCard('Percentile (lower better)', `${data.percentile_lower_is_better.toFixed(1)}%`)}
         ${statCard('Net charge', chargeValue)}
+        ${designGeometryCards(data)}
       </div>
       ${settingsLine(data)}
       <div class="compare-env-note">Lower energy and more negative Z-score indicate stronger compatibility with this environment within the model.</div>
@@ -1114,8 +1124,8 @@ function renderSpecificity(data) {
     { key: 'rank', label: 'Rank' },
     { key: 'sequence', label: 'Sequence' },
     { key: 'objective_delta', label: 'Δobjective vs best' },
-    { key: 'target_z', label: `Z ${humanizePreset(specificity.target_preset || target.environment?.preset)}` },
-    ...offTargetOrder.map((preset) => ({ key: preset, label: `Z ${humanizePreset(preset)}` })),
+    { key: 'target_z', label: `Z ${humanizePreset(specificity.target_preset || target.environment?.preset)} (design)` },
+    ...offTargetOrder.map((preset) => ({ key: preset, label: `Z ${humanizePreset(preset)} (design)` })),
     { key: 'worst', label: 'Worst off-target' },
     { key: 'margin', label: 'ΔZ' },
   ];
@@ -1135,7 +1145,7 @@ function renderSpecificity(data) {
         ${statCard('Selected ΔZ', Number(specificity.z_score_margin || 0).toFixed(3))}
       </div>
       ${energyUnitNote()}
-      <div class="result-note">This mode minimizes L<sub>&lambda;</sub> = &lambda;H<sub>target</sub> + (1-&lambda;)(H<sub>target</sub> - min(H<sub>off-targets</sub>)). Lower objective values are better. The table summarizes all recovered candidates, and the panel below shows detailed Hamiltonian terms and Z-score positions for the currently selected one.</div>
+      <div class="result-note">This mode minimizes L<sub>&lambda;</sub> = &lambda;H<sub>target</sub> + (1-&lambda;)(H<sub>target</sub> - min(H<sub>off-targets</sub>)). Lower objective values are better. The objective, the margins and the Z columns of the table use the fixed wheel geometry optimized by the search; the panels below also show the standard score of each environment (same protocol as the Score panel).</div>
       <div class="specificity-multi">
         <div class="specificity-table-wrap">
           <table class="specificity-table">
@@ -1156,8 +1166,8 @@ function renderSpecificity(data) {
                       </button>
                     </td>
                     <td>${formatObjectiveDelta(candidate.specificity_design?.objective, bestObjective)}</td>
-                    <td>${Number(candidate.target_environment?.z_score || 0).toFixed(3)}</td>
-                    ${offTargetOrder.map((preset) => `<td>${Number(envMap[preset]?.z_score || 0).toFixed(3)}</td>`).join('')}
+                    <td>${Number(designZ(candidate.target_environment)).toFixed(3)}</td>
+                    ${offTargetOrder.map((preset) => `<td>${Number(designZ(envMap[preset])).toFixed(3)}</td>`).join('')}
                     <td>${escapeHtml(humanizePreset(candidate.specificity_design?.worst_off_target_preset))}</td>
                     <td>${Number(candidate.specificity_design?.z_score_margin || 0).toFixed(3)}</td>
                   </tr>
@@ -1203,8 +1213,9 @@ function buildSpecificityCsv(data) {
     'objective',
     'delta_objective_vs_best',
     'target_preset',
-    'target_z_score',
-    ...offTargetOrder.map((preset) => `${preset}_z_score`),
+    'target_z_design_geometry',
+    'target_z_score_standard',
+    ...offTargetOrder.map((preset) => `${preset}_z_design_geometry`),
     'worst_off_target_preset',
     'z_score_margin',
     'energy_margin',
@@ -1222,8 +1233,9 @@ function buildSpecificityCsv(data) {
       Number(candidate.specificity_design?.objective || 0).toFixed(6),
       formatObjectiveDeltaCsv(candidate.specificity_design?.objective, bestObjective),
       candidate.target_environment?.environment?.preset || '',
+      Number(designZ(candidate.target_environment)).toFixed(6),
       Number(candidate.target_environment?.z_score || 0).toFixed(6),
-      ...offTargetOrder.map((preset) => Number(envMap[preset]?.z_score || 0).toFixed(6)),
+      ...offTargetOrder.map((preset) => Number(designZ(envMap[preset])).toFixed(6)),
       candidate.specificity_design?.worst_off_target_preset || '',
       Number(candidate.specificity_design?.z_score_margin || 0).toFixed(6),
       Number(candidate.specificity_design?.energy_margin || 0).toFixed(6),
@@ -1239,6 +1251,10 @@ function buildSpecificityCsv(data) {
   };
 
   return [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+}
+
+function designZ(scored) {
+  return scored?.design_geometry?.z_score ?? scored?.z_score ?? 0;
 }
 
 function formatObjectiveDelta(value, bestObjective) {
@@ -1404,7 +1420,7 @@ function renderFamilyState(state) {
       <div class="family-item">
         <div class="family-item-head">
           <strong>Candidate ${idx + 1}</strong>
-          <span>Model energy ${member.energy.toFixed(3)} | Z ${member.z_score.toFixed(3)}</span>
+          <span>Score: energy ${member.energy.toFixed(3)} | Z ${member.z_score.toFixed(3)}${member.design_geometry && isInterfacialPreset(member.environment?.preset) ? ` · design geometry: energy ${Number(member.design_geometry.energy).toFixed(3)} | Z ${Number(member.design_geometry.z_score).toFixed(3)}` : ''}</span>
         </div>
         <div class="family-seq">${member.sequence}</div>
       </div>
@@ -1537,8 +1553,8 @@ bindForm('cross-form', 'cross-result', async (fd, signal) => postJSON('/api/cros
       <div class="result-grid">
         ${statCard('Joint objective', data.cross_design.objective.toFixed(3))}
         ${statCard('λgap', data.cross_design.lambda_gap.toFixed(2))}
-        ${statCard('Model energy A', data.cross_design.energy_a.toFixed(3))}
-        ${statCard('Model energy B', data.cross_design.energy_b.toFixed(3))}
+        ${statCard('Design-geometry energy A', data.cross_design.energy_a.toFixed(3))}
+        ${statCard('Design-geometry energy B', data.cross_design.energy_b.toFixed(3))}
       </div>
 `));
 

@@ -225,6 +225,10 @@ def penetration_percent_to_environment(percent: int, interface_preset: str) -> D
     return env
 
 
+MJ_MAX_DISTANCE = 4  # contactos MJ entre i e i+1..i+4
+DESIGN_N_RANDOM = 500
+
+
 def build_builder(
     length: int,
     amino_acids: List[str],
@@ -232,7 +236,11 @@ def build_builder(
     n_decoys: int = 2000,
     zscore_seed: int = 42,
     stats_cache_dir: Optional[str] = None,
+    oriented: bool = False,
 ) -> HamiltonianBuilder:
+    """oriented=False: Hamiltoniano de geometría fija (fase del preset), el que optimizan las búsquedas.
+    oriented=True: en interfaces, cada secuencia se orienta con su propio momento hidrofóbico
+    (protocolo de puntuación, aplicado igual a la consulta y a las referencias)."""
     return HamiltonianBuilder(
         L=length,
         amino_acids=amino_acids,
@@ -243,8 +251,8 @@ def build_builder(
         wheel_phase_deg=float(environment["wheel_phase_deg"]),
         wheel_halfwidth_deg=float(environment["wheel_halfwidth_deg"]),
         membrane_charge=str(environment["membrane_charge"]),
-        align_phase=is_interfacial(environment),
-        max_interaction_dist=1,
+        align_phase=oriented and is_interfacial(environment),
+        max_interaction_dist=MJ_MAX_DISTANCE,
         interrupt_check=_check_limits,
     )
 
@@ -443,6 +451,79 @@ def score_sequence_with_builder(
     }
 
 
+@dataclass
+class ScoringModel:
+    """Builder calibrado y referencia aleatoria para un entorno y una regla de orientación."""
+    builder: HamiltonianBuilder
+    environment: Dict[str, Any]
+    reference: Dict[str, Any]
+    n_random: int
+
+
+def scoring_model(
+    length: int,
+    amino_acids: List[str],
+    environment: Dict[str, Any],
+    weights: Dict[str, float],
+    *,
+    n_decoys: int,
+    seed: int,
+    n_random: int,
+    oriented: bool,
+) -> ScoringModel:
+    builder = build_builder(length, amino_acids, environment, n_decoys=n_decoys, zscore_seed=seed, oriented=oriented)
+    reference = random_reference(builder, amino_acids, weights, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
+    return ScoringModel(builder, environment, reference, n_random)
+
+
+def report_models(
+    length: int,
+    amino_acids: List[str],
+    environment: Dict[str, Any],
+    weights: Dict[str, float],
+    *,
+    n_decoys: int,
+    seed: int,
+    n_random: int,
+) -> tuple[ScoringModel, ScoringModel]:
+    """(modelo de diseño con geometría fija, modelo de puntuación orientado); coinciden fuera de interfaces."""
+    design = scoring_model(length, amino_acids, environment, weights,
+                           n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=False)
+    if not is_interfacial(environment):
+        return design, design
+    scoring = scoring_model(length, amino_acids, environment, weights,
+                            n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
+    return design, scoring
+
+
+def score_with_model(sequence: str, model: ScoringModel, amino_acids: List[str], weights: Dict[str, float]) -> Dict[str, Any]:
+    return score_sequence_with_builder(
+        sequence, model.builder, model.environment, amino_acids, weights, model.reference, model.n_random
+    )
+
+
+def report_sequence(
+    sequence: str,
+    design: ScoringModel,
+    scoring: ScoringModel,
+    amino_acids: List[str],
+    weights: Dict[str, float],
+) -> Dict[str, Any]:
+    """Puntuación estándar (mismo protocolo que Score) más la energía en la geometría de diseño,
+    que es la magnitud que optimizó la búsqueda."""
+    report = score_with_model(sequence, scoring, amino_acids, weights)
+    in_design = report if design is scoring else score_with_model(sequence, design, amino_acids, weights)
+    report["design_geometry"] = {
+        "energy": in_design["energy"],
+        "z_score": in_design["z_score"],
+        "percentile_lower_is_better": in_design["percentile_lower_is_better"],
+        "breakdown": in_design["breakdown"],
+        "wheel_phase_deg": in_design["environment"]["wheel_phase_deg"],
+        "orientation": "fixed wheel phase",
+    }
+    return report
+
+
 def hamming_distance_codes(a: List[int], b: List[int]) -> int:
     return sum(x != y for x, y in zip(a, b))
 
@@ -478,9 +559,8 @@ def score_sequence(
     seq_to_codes(sequence, amino_acids)  # valida antes de calibrar
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
-    return score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
+    model = scoring_model(len(sequence), amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
+    return score_with_model(sequence, model, amino_acids, w)
 
 
 def simulated_annealing(
@@ -688,10 +768,8 @@ def _build_specificity_candidate_payload(
     amino_acids: List[str],
     target_env: Dict[str, Any],
     off_target_envs: List[Dict[str, Any]],
-    target_builder: HamiltonianBuilder,
-    off_builders: List[HamiltonianBuilder],
-    target_ref: Dict[str, Any],
-    off_refs: List[Dict[str, Any]],
+    target_models: tuple[ScoringModel, ScoringModel],
+    off_models: List[tuple[ScoringModel, ScoringModel]],
     weights: Dict[str, float],
     lambda_balance: float,
     steps: int,
@@ -702,16 +780,14 @@ def _build_specificity_candidate_payload(
     best_target_energy: float,
     best_off_energies: List[float],
 ) -> Dict[str, Any]:
-    # Se puntúa con los mismos builders que la búsqueda: las energías mostradas son las optimizadas.
-    target_score = score_sequence_with_builder(
-        sequence, target_builder, target_env, amino_acids, weights, target_ref, SPECIFICITY_N_RANDOM
-    )
-    off_target_scores = [
-        score_sequence_with_builder(sequence, builder, env, amino_acids, weights, ref, SPECIFICITY_N_RANDOM)
-        for builder, env, ref in zip(off_builders, off_target_envs, off_refs)
-    ]
-
-    worst_off_target = min(off_target_scores, key=lambda item: item["energy"])
+    # Márgenes en la geometría de diseño (la del objetivo optimizado); cada entorno incluye además
+    # su puntuación estándar (mismo protocolo que Score).
+    target_score = report_sequence(sequence, *target_models, amino_acids, weights)
+    off_target_scores = [report_sequence(sequence, *models, amino_acids, weights) for models in off_models]
+    target_design = target_score["design_geometry"]
+    off_design = [item["design_geometry"] for item in off_target_scores]
+    worst_index = min(range(len(off_design)), key=lambda idx: off_design[idx]["energy"])
+    worst_off_target = off_target_scores[worst_index]
     specificity_design = {
         "objective": objective,
         "objective_formula": "H_target + (lambda - 1) * min(H_offtargets)",
@@ -720,8 +796,9 @@ def _build_specificity_candidate_payload(
         "target_preset": target_env["preset"],
         "off_target_presets": [env["preset"] for env in off_target_envs],
         "worst_off_target_preset": worst_off_target["environment"]["preset"],
-        "energy_margin": worst_off_target["energy"] - target_score["energy"],
-        "z_score_margin": min(item["z_score"] for item in off_target_scores) - target_score["z_score"],
+        "energy_margin": off_design[worst_index]["energy"] - target_design["energy"],
+        "z_score_margin": min(item["z_score"] for item in off_design) - target_design["z_score"],
+        "margins_geometry": "design (fixed wheel phase)",
         "steps": steps,
         "restarts": restarts,
         "seed": seed,
@@ -752,10 +829,11 @@ def design_sequence(
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=500, seed=rng_seed(seed, REFERENCE_STREAM))
-    result = simulated_annealing(builder, amino_acids, w, steps=steps, restarts=restarts, seed=rng_seed(seed, SEARCH_STREAM))
-    score = score_sequence_with_builder(result["sequence"], builder, env, amino_acids, w, ref, 500)
+    design, scoring = report_models(length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    result = simulated_annealing(
+        design.builder, amino_acids, w, steps=steps, restarts=restarts, seed=rng_seed(seed, SEARCH_STREAM)
+    )
+    score = report_sequence(result["sequence"], design, scoring, amino_acids, w)
     score["design_settings"] = {"steps": steps, "restarts": restarts, "seed": seed}
     return score
 
@@ -807,9 +885,8 @@ def design_family_stream(
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    n_random = 500
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
+    design, scoring = report_models(length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    builder = design.builder
 
     unique_results: Dict[str, Dict[str, Any]] = {}
     accepted_codes: List[List[int]] = []
@@ -854,7 +931,7 @@ def design_family_stream(
         }
         if sequence in unique_results:
             continue
-        scored = score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
+        scored = report_sequence(sequence, design, scoring, amino_acids, w)
         min_hamming = None
         if accepted_codes:
             min_hamming = min(hamming_distance_codes(candidate["codes"], prior) for prior in accepted_codes)
@@ -873,7 +950,8 @@ def design_family_stream(
         if len(unique_results) >= family_size:
             break
 
-    ranked = sorted(unique_results.values(), key=lambda item: item["energy"])[:family_size]
+    # Orden por la magnitud optimizada (energía en la geometría de diseño).
+    ranked = sorted(unique_results.values(), key=lambda item: item["design_geometry"]["energy"])[:family_size]
     payload = {
         "environment": env,
         "weights": w,
@@ -1010,8 +1088,9 @@ def cross_environment_design(
     w = normalize_weights(weights)
     env_a = resolve_environment(environment_a)
     env_b = resolve_environment(environment_b)
-    builder_a = build_builder(length, amino_acids, env_a, n_decoys=n_decoys, zscore_seed=seed)
-    builder_b = build_builder(length, amino_acids, env_b, n_decoys=n_decoys, zscore_seed=seed)
+    design_a, scoring_a = report_models(length, amino_acids, env_a, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    design_b, scoring_b = report_models(length, amino_acids, env_b, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    builder_a, builder_b = design_a.builder, design_b.builder
     rng = np.random.default_rng(rng_seed(seed, SEARCH_STREAM))
     n_aa = len(amino_acids)
     best_codes = None
@@ -1061,12 +1140,9 @@ def cross_environment_design(
 
     assert best_codes is not None
     sequence = codes_to_seq(best_codes, amino_acids)
-    # El informe usa los mismos builders (misma calibración) que la optimización.
-    n_random = 500
-    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
-    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
-    scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, n_random)
-    scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, n_random)
+    # Puntuación estándar (como en Compare) y energía en la geometría de diseño que optimizó la búsqueda.
+    scored_a = report_sequence(sequence, design_a, scoring_a, amino_acids, w)
+    scored_b = report_sequence(sequence, design_b, scoring_b, amino_acids, w)
     comparison = {
         "sequence": sequence,
         "environment_a": scored_a,
@@ -1178,14 +1254,14 @@ def design_specificity_stream(
     }
 
     builder_specs = [("target", target_env)] + [(f"off_target_{idx + 1}", env) for idx, env in enumerate(off_target_envs)]
+    models: Dict[str, tuple[ScoringModel, ScoringModel]] = {}
     built: Dict[str, HamiltonianBuilder] = {}
-    refs: Dict[str, Dict[str, Any]] = {}
     total_builders = len(builder_specs)
     for idx, (label, env) in enumerate(builder_specs, start=1):
-        built[label] = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-        refs[label] = random_reference(
-            built[label], amino_acids, w, n_random=SPECIFICITY_N_RANDOM, seed=rng_seed(seed, REFERENCE_STREAM)
+        models[label] = report_models(
+            length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=SPECIFICITY_N_RANDOM
         )
+        built[label] = models[label][0].builder
         yield {
             "type": "phase",
             "payload": {
@@ -1263,10 +1339,8 @@ def design_specificity_stream(
             amino_acids=amino_acids,
             target_env=target_env,
             off_target_envs=off_target_envs,
-            target_builder=target_builder,
-            off_builders=off_builders,
-            target_ref=refs["target"],
-            off_refs=[refs[f"off_target_{idx + 1}"] for idx in range(len(off_target_envs))],
+            target_models=models["target"],
+            off_models=[models[f"off_target_{idx + 1}"] for idx in range(len(off_target_envs))],
             weights=w,
             lambda_balance=lambda_balance,
             steps=steps,
@@ -1299,7 +1373,7 @@ def design_specificity_stream(
         key=lambda item: (
             round(float(item["specificity_design"]["objective"]), 8),
             -float(item["specificity_design"]["z_score_margin"]),
-            float(item["target_environment"]["z_score"]),
+            float(item["target_environment"]["design_geometry"]["z_score"]),
             item["sequence"],
         ),
     )

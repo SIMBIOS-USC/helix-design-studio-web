@@ -473,6 +473,41 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         self.assertGreater(sum(percentiles) / len(percentiles), 35)
         self.assertLess(sum(percentiles) / len(percentiles), 65)
 
+    def test_search_uses_fixed_geometry_and_scoring_orients(self):
+        """Searches optimize the fixed-geometry Hamiltonian (one- and two-body terms only); the
+        standard score orients each sequence, query and references alike, by its hydrophobic moment."""
+        import itertools
+
+        env = self.engine.resolve_environment(self.env_a)
+
+        def third_order(builder, term, base, positions):
+            total = 0.0
+            for size in range(len(positions) + 1):
+                for subset in itertools.combinations(positions, size):
+                    codes = [1 - code if idx in subset else code for idx, code in enumerate(base)]
+                    total += (-1) ** (len(positions) - size) * getattr(builder, term)(codes)
+            return total
+
+        design = self.engine.build_builder(12, ["A", "K"], env, n_decoys=100, oriented=False)
+        scoring = self.engine.build_builder(12, ["A", "K"], env, n_decoys=100, oriented=True)
+        base = [0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1]
+        for term in ("_raw_env_pol", "_raw_env_chg", "_raw_electrostatic"):
+            with self.subTest(term=term):
+                self.assertAlmostEqual(third_order(design, term, base, (1, 4, 7)), 0.0, places=12)
+        self.assertGreater(max(abs(third_order(scoring, "_raw_env_pol", base, triple))
+                               for triple in itertools.combinations(range(12), 3)), 0.01)
+        designed = self.post("/api/design", self.design)
+        self.assertEqual(designed["design_geometry"]["orientation"], "fixed wheel phase")
+        self.assertEqual(designed["design_geometry"]["wheel_phase_deg"], env["wheel_phase_deg"])
+
+    def test_pairwise_term_counts_contacts_up_to_i_plus_4(self):
+        residues = list(self.engine.DEFAULT_ALPHABET_16)
+        builder = self.engine.build_builder(10, residues, self.engine.resolve_environment(self.env_b), n_decoys=100)
+        self.assertEqual(builder.kwargs["max_interaction_dist"], 4)
+        codes = self.engine.seq_to_codes("AEKLWKEAGH", residues)
+        expected = sum(builder.mj_matrix[codes[i], codes[j]] for i in range(10) for j in range(i + 1, min(i + 5, 10)))
+        self.assertAlmostEqual(builder._raw_pw_int(codes), expected / (10 * 4))
+
     def test_workflows_report_consistent_energies(self):
         designed = self.post("/api/design", self.design)
         rescored = self.post("/api/score", {**self.common, "sequence": designed["sequence"], "n_random": 500})
@@ -481,8 +516,9 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
 
         environments = {"environment_a": self.env_a, "environment_b": self.env_b}
         cross = self.post("/api/cross-design", {**self.design, **environments})
-        self.assertAlmostEqual(cross["cross_design"]["energy_a"], cross["environment_a"]["energy"], places=9)
-        self.assertAlmostEqual(cross["cross_design"]["energy_b"], cross["environment_b"]["energy"], places=9)
+        # The search optimizes the design geometry; results also carry the standard score.
+        self.assertAlmostEqual(cross["cross_design"]["energy_a"], cross["environment_a"]["design_geometry"]["energy"], places=9)
+        self.assertAlmostEqual(cross["cross_design"]["energy_b"], cross["environment_b"]["design_geometry"]["energy"], places=9)
         compared = self.post("/api/compare", {**self.common, **environments, "sequence": cross["sequence"]})
         self.assertAlmostEqual(compared["environment_a"]["energy"], cross["environment_a"]["energy"], places=9)
         self.assertAlmostEqual(compared["environment_b"]["energy"], cross["environment_b"]["energy"], places=9)
