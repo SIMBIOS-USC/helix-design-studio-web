@@ -37,17 +37,24 @@ def _construct_resource_path(filename: str) -> str:
     return os.path.normpath(path)
 
 
+STANDARD_RESIDUES = frozenset("ACDEFGHIKLMNPQRSTVWY")
+
+
 def _validate_labeled_matrix(matrix: np.ndarray, symbols: List[str], name: str) -> None:
     """
-    Checks that a parameter table has one unique residue label per row and column,
-    so that callers can index it by residue label.
+    Checks that a parameter table is a finite 20x20 matrix labelled once with each
+    of the 20 standard residues, so that callers can index it by residue label.
     """
     if len(set(symbols)) != len(symbols):
         raise ValueError(f"{name} header contains repeated residue labels: {symbols}")
+    if set(symbols) != STANDARD_RESIDUES:
+        raise ValueError(f"{name} header must list the 20 standard residues, got {symbols}")
     if matrix.shape != (len(symbols), len(symbols)):
         raise ValueError(
             f"{name} shape {matrix.shape} does not match its {len(symbols)} header labels"
         )
+    if not np.isfinite(matrix).all():
+        raise ValueError(f"{name} contains non-finite values")
 
 
 @functools.lru_cache(maxsize=None)

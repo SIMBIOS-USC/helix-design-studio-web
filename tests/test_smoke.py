@@ -191,6 +191,9 @@ class WebSmokeTests(unittest.TestCase):
                 {"preset": "homogeneous_polar", "wheel_halfwidth_deg": float(angle)} for angle in range(5)
             ]}),
             ("/api/specificity-design", {**specificity, "num_sequences": 5, "restarts": 4}),
+            # Same Hamiltonian under another preset name.
+            ("/api/specificity-design", {**specificity, "off_target_environments": [
+                {"preset": "interfacial_pos", "membrane_charge": "neg"}]}),
             ("/api/score", {"sequence": "ALKD", "n_decoy": 100}),
         ]
         for route, payload in invalid:
@@ -248,6 +251,72 @@ class WebSmokeTests(unittest.TestCase):
             main.MAX_JOB_SECONDS = previous
         self.assertEqual(self.client.post("/api/design", json=self.design).status_code, 200)
 
+    def test_results_include_provenance(self):
+        from app import main
+
+        request = {"sequence": "ALKD", "residues": ["A", "L", "K", "D"], "n_decoys": 100, "n_random": 100, "seed": 7}
+        result = self.post("/api/score", request)
+        provenance = result["provenance"]
+        self.assertEqual(provenance["version"], main.APP_VERSION)
+        self.assertEqual(provenance["parameters_sha256"], main.PARAMETERS_SHA256)
+        self.assertEqual({key: provenance["request"][key] for key in request}, request)
+        self.assertEqual(provenance["request"]["environment"]["preset"], "interfacial_neg")
+        self.assertIn("seed_protocol", provenance)
+        self.assertEqual(result["calibration"]["n_decoys"], 100)
+        self.assertEqual(result["calibration"]["seed_entropy"], 7)
+        self.assertEqual(result["random_reference"]["seed_entropy"], [7, 1])
+        family = self.stream("/api/design-family-stream", {**self.design, "family_size": 2, "oversample_factor": 1})
+        self.assertEqual(family["provenance"]["request"]["family_size"], 2)
+
+    def test_calibration_honours_cancellation(self):
+        import threading
+
+        cancelled = threading.Event()
+        cancelled.set()
+        env = self.engine.resolve_environment(self.env_a)
+        with tempfile.TemporaryDirectory(prefix="helix-cache-") as cache_dir:
+            with self.engine.calculation_limits(self.engine.CalculationLimits(cancelled=cancelled)):
+                with self.assertRaises(self.engine.CalculationCancelled):
+                    self.engine.build_builder(12, list(self.engine.DEFAULT_ALPHABET_16), env,
+                                              n_decoys=5000, stats_cache_dir=cache_dir)
+
+    def test_stream_disconnect_releases_calculation_slot(self):
+        """A real server: closing a stream must stop the calculation and free its slot."""
+        import socket
+        import subprocess
+        import sys
+        import time
+        import httpx
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        env = {**os.environ, "HELIX_MAX_CONCURRENT_JOBS": "1",
+               "HELIX_CACHE_DIR": str(Path(self.temporary.name) / "cache-disconnect")}
+        server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port)],
+                                  cwd=Path(__file__).resolve().parents[1], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(server.wait, 10)
+        self.addCleanup(server.terminate)
+        base = f"http://127.0.0.1:{port}"
+        for _ in range(100):
+            try:
+                httpx.get(f"{base}/api/health", timeout=1)
+                break
+            except httpx.TransportError:
+                time.sleep(0.1)
+        heavy = {**self.design, "length": 30, "steps": 20000, "restarts": 10, "family_size": 4}
+        with httpx.stream("POST", f"{base}/api/design-family-stream", json=heavy, timeout=30) as response:
+            self.assertEqual(json.loads(next(response.iter_lines()))["type"], "meta")
+        deadline = time.monotonic() + 10
+        status = None
+        while time.monotonic() < deadline:
+            status = httpx.post(f"{base}/api/design", json=self.design, timeout=30).status_code
+            if status == 200:
+                break
+            time.sleep(0.2)
+        self.assertEqual(status, 200, "the calculation slot was not released after the client disconnected")
+
     def test_usage_logging_enabled(self):
         """Logging is configured at import time, so it is exercised in a fresh interpreter."""
         import subprocess
@@ -261,13 +330,14 @@ client = TestClient(main.app)
 headers = {"X-Anonymous-Id": "visitor-1"}
 assert client.post("/api/visit", headers=headers).json()["total_visits"] == 1
 assert client.post("/api/visit", headers={"X-Anonymous-Id": "visitor-2"}).json()["unique_visitors"] == 2
+assert client.post("/api/visit", headers={"Referer": "https://[invalid"}).status_code == 200
 payload = {"sequence": "ALKD", "residues": ["A", "L", "K", "D"], "n_decoys": 100, "n_random": 100}
-assert client.post("/api/score", json=payload).status_code == 200
+assert client.post("/api/score", json=payload, headers={"Referer": "https://[invalid"}).status_code == 200
 assert client.post("/api/score", json={**payload, "sequence": "ALKE"}).status_code == 422
 main.MAX_JOB_SECONDS = 0.0
 assert client.post("/api/score", json=payload).status_code == 400
 main.MAX_JOB_SECONDS = 1800.0
-assert client.get("/api/usage-metrics").json() == {"total_visits": 2, "unique_visitors": 2, "total_runs": 1}
+assert client.get("/api/usage-metrics").json() == {"total_visits": 3, "unique_visitors": 2, "total_runs": 1}
 assert client.get("/api/health").status_code == 200, "client errors must not degrade health"
 main.score_sequence = lambda **kwargs: 1 / 0
 assert client.post("/api/score", json=payload).status_code == 500
@@ -325,6 +395,22 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         for matrix in (builder.M3, builder.M4):
             self.assertFalse(matrix[index["C"]].any())
             self.assertFalse(matrix[:, index["P"]].any())
+
+    def test_invalid_cached_sigma_is_recomputed(self):
+        env = self.engine.resolve_environment(self.env_a)
+        residues = list(self.engine.DEFAULT_ALPHABET_16)
+        with tempfile.TemporaryDirectory(prefix="helix-cache-") as cache_dir:
+            fresh = self.engine.build_builder(5, residues, env, n_decoys=100, stats_cache_dir=cache_dir)
+            cache_path = fresh._stats_cache_path(100)
+            for bad_sigma in (0.0, -1.0):
+                with open(cache_path, encoding="utf-8") as handle:
+                    cached = json.load(handle)
+                cached["stats"]["env_pol"]["sigma"] = bad_sigma
+                with open(cache_path, "w", encoding="utf-8") as handle:
+                    json.dump(cached, handle)
+                reloaded = self.engine.build_builder(5, residues, env, n_decoys=100, stats_cache_dir=cache_dir)
+                with self.subTest(sigma=bad_sigma):
+                    self.assertEqual(reloaded.stats, fresh.stats)
 
     def test_corrupt_calibration_cache_is_recomputed(self):
         env = self.engine.resolve_environment(self.env_a)
@@ -400,6 +486,20 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         compared = self.post("/api/compare", {**self.common, **environments, "sequence": cross["sequence"]})
         self.assertAlmostEqual(compared["environment_a"]["energy"], cross["environment_a"]["energy"], places=9)
         self.assertAlmostEqual(compared["environment_b"]["energy"], cross["environment_b"]["energy"], places=9)
+
+    def test_invalid_parameter_tables_are_rejected(self):
+        import numpy as np
+        from data_loaders.energy_matrix_loader import _validate_labeled_matrix
+
+        standard = list("ACDEFGHIKLMNPQRSTVWY")
+        tables = {
+            "non-finite": (np.full((20, 20), np.nan), standard),
+            "1x1": (np.zeros((1, 1)), ["A"]),
+            "non-standard label": (np.zeros((20, 20)), standard[:-1] + ["B"]),
+        }
+        for name, (matrix, symbols) in tables.items():
+            with self.subTest(table=name), self.assertRaises(ValueError):
+                _validate_labeled_matrix(matrix, symbols, name)
 
     def test_parameter_tables_have_unique_residue_labels(self):
         from data_loaders import energy_matrix_loader as loader

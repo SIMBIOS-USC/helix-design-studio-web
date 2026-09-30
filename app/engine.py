@@ -162,6 +162,20 @@ def is_interfacial(environment: Dict[str, Any]) -> bool:
     return str(environment.get("preset", "")).startswith("interfacial_")
 
 
+def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
+    """Configuración que determina el Hamiltoniano: entornos con la misma clave son idénticos
+    aunque tengan distinto nombre de preset (p. ej. interfacial_pos con membrane_charge='neg')."""
+    env = resolve_environment(environment)
+    half_width = float(env["wheel_halfwidth_deg"])
+    if half_width >= 180.0:
+        # Todo el contorno es apolar: el término de carga, que solo actúa en agua, es nulo.
+        return ("all_apolar",)
+    charge = str(env["membrane_charge"])
+    if half_width < 0.0:
+        return ("all_polar", charge)
+    return ("sector", half_width, is_interfacial(env), float(env["wheel_phase_deg"]), charge)
+
+
 def effective_environment(builder: HamiltonianBuilder, codes: List[int], environment: Dict[str, Any]) -> Dict[str, Any]:
     """Entorno con la fase de rueda realmente usada para puntuar esta secuencia."""
     env = dict(environment)
@@ -231,6 +245,7 @@ def build_builder(
         membrane_charge=str(environment["membrane_charge"]),
         align_phase=is_interfacial(environment),
         max_interaction_dist=1,
+        interrupt_check=_check_limits,
     )
 
 
@@ -354,6 +369,13 @@ REFERENCE_STREAM = 1
 SEARCH_STREAM = 2
 
 
+SEED_PROTOCOL = (
+    "numpy.random.default_rng with SeedSequence entropy: calibration decoys [seed]; "
+    "random reference [seed, 1]; search [seed, 2] for single searches and [seed, 2, i] "
+    "for the i-th run of family and specificity searches"
+)
+
+
 def rng_seed(seed: int, stream: int, *index: int) -> List[int]:
     return [int(seed), stream, *index]
 
@@ -372,7 +394,7 @@ def random_reference(
         energies.append(compute_breakdown(builder, codes, weights)["total"])
     mean = statistics.fmean(energies)
     std = statistics.pstdev(energies) or 1.0
-    return {"mean": float(mean), "std": float(std), "energies": energies}
+    return {"mean": float(mean), "std": float(std), "energies": energies, "seed_entropy": seed}
 
 
 def score_sequence_with_builder(
@@ -400,7 +422,15 @@ def score_sequence_with_builder(
         "energy": energy,
         "z_score": float(z_score),
         "percentile_lower_is_better": float(percentile),
-        "random_reference": {"mean": ref["mean"], "std": ref["std"], "n": n_random},
+        "random_reference": {
+            "mean": ref["mean"], "std": ref["std"], "n": n_random, "seed_entropy": ref.get("seed_entropy"),
+        },
+        "calibration": {
+            "n_decoys": int(builder.kwargs.get("n_decoys", 0)),
+            "seed_entropy": int(builder.kwargs.get("zscore_seed", 0)),
+            "orientation": "own hydrophobic moment" if builder.align_phase else "fixed wheel phase",
+            "terms": {term: {"mu": mu, "sigma": sigma} for term, (mu, sigma) in builder.stats.items()},
+        },
         "breakdown": breakdown,
         "observables": {
             "abs_mu_h": mu_descriptor["magnitude"],
@@ -1108,27 +1138,15 @@ def design_specificity_stream(
     w = normalize_weights(weights)
     target_env = resolve_environment(target_environment)
     off_target_envs = [resolve_environment(env) for env in off_target_environments]
+    # Se descartan off-targets físicamente idénticos entre sí o al objetivo (mismo Hamiltoniano).
+    seen: set[tuple[Any, ...]] = {physical_environment_key(target_env)}
     unique_off_targets: List[Dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
     for env in off_target_envs:
-        key = (
-            env.get("preset"),
-            env.get("wheel_phase_deg"),
-            env.get("wheel_halfwidth_deg"),
-            env.get("membrane_charge"),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_off_targets.append(env)
-    off_target_envs = [
-        env for env in unique_off_targets
-        if (
-            env.get("preset") != target_env.get("preset")
-            or float(env.get("wheel_halfwidth_deg", 0.0)) != float(target_env.get("wheel_halfwidth_deg", 0.0))
-            or str(env.get("membrane_charge")) != str(target_env.get("membrane_charge"))
-        )
-    ]
+        key = physical_environment_key(env)
+        if key not in seen:
+            seen.add(key)
+            unique_off_targets.append(env)
+    off_target_envs = unique_off_targets
     if not off_target_envs:
         raise ValueError("Please provide at least one off-target environment different from the target.")
 

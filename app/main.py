@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import os
+import platform
 import secrets
 import threading
 import tempfile
@@ -14,7 +15,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
-from typing import Any, Callable, Deque, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Callable, Deque, Dict, Iterator, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -31,6 +32,7 @@ from .engine import (
     DEFAULT_ALPHABET_16,
     DEFAULT_WEIGHTS,
     ENVIRONMENT_PRESETS,
+    SEED_PROTOCOL,
     calculation_limits,
     compare_environments,
     cross_environment_design,
@@ -41,9 +43,11 @@ from .engine import (
     design_sequence,
     generate_helix_pdb,
     optimize_penetration,
-    resolve_environment,
+    physical_environment_key,
     score_sequence,
 )
+from core.hamiltonian_builder import parameter_set_sha256  # noqa: E402  (ruta añadida por .engine)
+
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -119,6 +123,7 @@ class RequestLimitsMiddleware:
 
 
 APP_VERSION = "1.0.0"
+PARAMETERS_SHA256 = parameter_set_sha256()
 
 app = FastAPI(title="Helix Design Studio", version=APP_VERSION)
 app.add_middleware(RequestLimitsMiddleware)
@@ -255,7 +260,10 @@ def _client_ip_from_request(request: Request) -> str:
 
 def _url_origin(url: str) -> Optional[str]:
     """Solo esquema y host: la ruta o la query de un referer pueden contener datos privados."""
-    parts = urlsplit(url[:2048])
+    try:
+        parts = urlsplit(url[:2048])
+    except ValueError:  # p. ej. "https://[invalid"
+        return None
     return f"{parts.scheme}://{parts.netloc}"[:MAX_LOGGED_TEXT] if parts.scheme and parts.netloc else None
 
 
@@ -469,17 +477,21 @@ def _log_usage_event(
 ) -> None:
     if not USAGE_LOGGING_ENABLED:
         return
-    event = {
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "endpoint": endpoint,
-        "status": status,
-        "duration_s": round(duration_s, 4),
-        **_usage_context(request),
-        **_request_summary(payload),
-    }
-    if extra:
-        event.update(extra)
-    _append_usage_event(event)
+    # El registro de uso nunca debe invalidar una petición (ni un cálculo ya terminado).
+    try:
+        event = {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "endpoint": endpoint,
+            "status": status,
+            "duration_s": round(duration_s, 4),
+            **_usage_context(request),
+            **_request_summary(payload),
+        }
+        if extra:
+            event.update(extra)
+        _append_usage_event(event)
+    except Exception:
+        logger.warning("Could not record usage event", exc_info=True)
 
 
 class RequestModel(BaseModel):
@@ -531,9 +543,8 @@ def _check_sequence_in_alphabet(sequence: str, residues: List[str]) -> None:
         raise ValueError(f"Residues {', '.join(missing)} of the sequence are not in the allowed residues.")
 
 
-def _environment_key(env: EnvironmentConfig) -> tuple[Any, Any, Any]:
-    resolved = resolve_environment(env.model_dump())
-    return (resolved["preset"], float(resolved["wheel_halfwidth_deg"]), resolved["membrane_charge"])
+def _environment_key(env: EnvironmentConfig) -> tuple[Any, ...]:
+    return physical_environment_key(env.model_dump())
 
 
 class ScoreRequest(RequestModel):
@@ -667,7 +678,9 @@ class SpecificityDesignRequest(RequestModel):
     def validate_target_not_in_off_targets(self) -> "SpecificityDesignRequest":
         target_key = _environment_key(self.target_environment)
         if any(_environment_key(env) == target_key for env in self.off_target_environments):
-            raise ValueError("The target environment cannot also be listed as an off-target.")
+            raise ValueError(
+                "An off-target environment is physically identical to the target (same sector and membrane charge)."
+            )
         if self.num_sequences > self.restarts:
             raise ValueError("num_sequences cannot exceed restarts: each candidate needs at least one restart.")
         return self
@@ -765,6 +778,42 @@ def usage_metrics() -> Dict[str, Any]:
     return _usage_metrics()
 
 
+def _provenance(payload: Any) -> Dict[str, Any]:
+    """Todo lo necesario para repetir el cálculo: petición completa, versión, parámetros y semillas."""
+    import numpy
+
+    return {
+        "software": "Helix Design Studio",
+        "version": APP_VERSION,
+        "parameters_sha256": PARAMETERS_SHA256,
+        "request": payload.model_dump(mode="json"),
+        "seed_protocol": SEED_PROTOCOL,
+        "python": platform.python_version(),
+        "numpy": numpy.__version__,
+    }
+
+
+def _consume_result(task: "asyncio.Future[Any]") -> None:
+    # Evita avisos por excepciones de cálculos abandonados (p. ej. cancelados).
+    if not task.cancelled():
+        task.exception()
+
+
+async def _await_calculation(request: Request, func: Callable[[], Any], cancelled: threading.Event) -> Any:
+    """Ejecuta func en el pool de hilos; si el cliente se desconecta, pide al cálculo que se detenga."""
+    task = asyncio.ensure_future(run_in_threadpool(func))
+    task.add_done_callback(_consume_result)
+    try:
+        while not task.done():
+            await asyncio.wait({task}, timeout=DISCONNECT_POLL_SECONDS)
+            if not task.done() and await request.is_disconnected():
+                cancelled.set()
+        return task.result()
+    finally:
+        if not task.done():
+            cancelled.set()
+
+
 async def _run_calculation(
     request: Request,
     endpoint: str,
@@ -783,14 +832,9 @@ async def _run_calculation(
         with calculation_limits(limits):
             return calculation()
 
-    task = asyncio.ensure_future(run_in_threadpool(run))
     try:
         # Si el cliente se va (pestaña cerrada, Cancelar), el cálculo se detiene y libera su plaza.
-        while not task.done():
-            await asyncio.wait({task}, timeout=DISCONNECT_POLL_SECONDS)
-            if not task.done() and await request.is_disconnected():
-                cancelled.set()
-        result = task.result()
+        result = await _await_calculation(request, run, cancelled)
     except CalculationCancelled as exc:
         _log_usage_event(request, endpoint, payload, "cancelled", time.perf_counter() - started)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -802,14 +846,13 @@ async def _run_calculation(
         )
         raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
-        if not task.done():
-            cancelled.set()
+        cancelled.set()
         if use_job_slot:
             _job_slots.release()
     _log_usage_event(
         request, endpoint, payload, "ok", time.perf_counter() - started, summary(result) if summary else None
     )
-    return result
+    return {**result, "provenance": _provenance(payload)}
 
 
 def _stream_calculation(
@@ -819,25 +862,34 @@ def _stream_calculation(
     updates: Callable[[], Iterator[Dict[str, Any]]],
     summary: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> StreamingResponse:
-    def generate() -> Iterator[str]:
+    async def generate() -> AsyncIterator[str]:
         started = time.perf_counter()
         if not _job_slots.acquire(blocking=False):
             yield json.dumps({"type": "error", "detail": BUSY_MSG}) + "\n"
             return
+        cancelled = threading.Event()
+        limits = CalculationLimits(deadline=time.monotonic() + MAX_JOB_SECONDS, cancelled=cancelled)
+        iterator = updates()
+
+        def step() -> Optional[Dict[str, Any]]:
+            # Cada paso se ejecuta en un hilo del pool con los límites de esta petición.
+            with calculation_limits(limits):
+                return next(iterator, None)
+
         final_payload: Dict[str, Any] = {}
-        limits = CalculationLimits(deadline=time.monotonic() + MAX_JOB_SECONDS)
         try:
-            iterator = updates()
             while True:
-                # Cada paso puede ejecutarse en un hilo distinto del pool: se fijan los límites en cada uno.
-                # Si el cliente se desconecta, Starlette deja de pedir pasos y cierra el generador.
-                with calculation_limits(limits):
-                    update = next(iterator, None)
+                # Cada paso puede tardar (una búsqueda completa): se vigila la desconexión mientras dura.
+                update = await _await_calculation(request, step, cancelled)
                 if update is None:
                     break
                 if update.get("type") == "final":
                     final_payload = update.get("payload", {})
+                    update = {**update, "payload": {**final_payload, "provenance": _provenance(payload)}}
                 yield json.dumps(update) + "\n"
+        except CalculationCancelled:
+            _log_usage_event(request, endpoint, payload, "cancelled", time.perf_counter() - started)
+            return
         except Exception as exc:
             status_code, detail = _classify_error(exc)
             _log_usage_event(
@@ -847,6 +899,8 @@ def _stream_calculation(
             yield json.dumps({"type": "error", "detail": detail}) + "\n"
             return
         finally:
+            # También al cerrarse el stream por desconexión: el hilo se detiene en la siguiente evaluación.
+            cancelled.set()
             _job_slots.release()
         _log_usage_event(request, endpoint, payload, "ok", time.perf_counter() - started, summary(final_payload))
 

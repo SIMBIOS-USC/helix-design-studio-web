@@ -936,6 +936,7 @@ function settingsLine(data) {
     parts.push(`wheel phase ${Number(env.wheel_phase_deg).toFixed(1)}°`);
   }
   if (data.alphabet) parts.push(`alphabet ${data.alphabet.join('')}`);
+  if (data.calibration) parts.push(`calibration ${data.calibration.n_decoys} decoys, seed ${data.calibration.seed_entropy}`);
   if (data.random_reference?.n) parts.push(`random reference n = ${data.random_reference.n}`);
   if (data.design_settings) {
     parts.push(`steps ${data.design_settings.steps}, restarts ${data.design_settings.restarts}, seed ${data.design_settings.seed}`);
@@ -1122,6 +1123,7 @@ function renderSpecificity(data) {
     <div class="result-card">
       <div class="toolbar">
         <button class="ghost-btn" type="button" data-download-specificity-csv>Download CSV</button>
+        <button class="ghost-btn" type="button" data-download-specificity-json>Download JSON</button>
       </div>
       ${data.specificity_collection?.partial ? `<div class="result-note partial-note" role="status">Partial result (${escapeHtml(data.specificity_collection.partial_reason || 'stopped early')}): ${candidates.length} of ${Number(data.specificity_collection.requested || candidates.length)} requested candidates.</div>` : ''}
       <div class="sequence-banner">${selected.sequence}</div>
@@ -1274,6 +1276,8 @@ function bindSpecificityInteractions(root, data) {
     });
   });
 
+  const jsonBtn = $('[data-download-specificity-json]', root);
+  if (jsonBtn) jsonBtn.addEventListener('click', () => downloadJson('specificity_result.json', data));
   const downloadBtn = $('[data-download-specificity-csv]', root);
   if (downloadBtn) {
     downloadBtn.addEventListener('click', () => {

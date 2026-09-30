@@ -48,6 +48,21 @@ def hydrophobic_moment(sequence: Sequence[str]) -> Tuple[float, float]:
     return mx, my
 
 
+RESOURCE_FILES = ("mj_matrix.txt", "helix_pairs_prop.txt", "helix_sd_i_3.txt", "helix_sd_i_4.txt")
+
+
+def parameter_set_sha256() -> str:
+    """Huella del conjunto de parámetros (tablas y escalas por residuo), independiente del alfabeto."""
+    digest = hashlib.sha256()
+    resources = os.path.join(os.path.dirname(__file__), "resources")
+    for name in RESOURCE_FILES:
+        with open(os.path.join(resources, name), "rb") as fh:
+            digest.update(name.encode("utf-8") + b"\0" + fh.read())
+    scales = {"pace_scholtz": PACE_SCHOLTZ_HELIX_PROPENSITY, "fauchere_pliska": FAUCHERE_PLISKA_HYDROPHOBICITY}
+    digest.update(json.dumps(scales, sort_keys=True).encode("utf-8"))
+    return digest.hexdigest()
+
+
 def aligned_phase_deg(sequence: Sequence[str]) -> Optional[float]:
     """Fase de la rueda que centra el momento hidrofóbico en el sector de membrana (None si es nulo)."""
     mx, my = hydrophobic_moment(sequence)
@@ -200,8 +215,10 @@ class HamiltonianBuilder:
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             logger.warning("Ignoring unreadable Z-score cache %s: %s", cache_path, exc)
             return None
-        expected = set(self.TERMS)
-        if set(stats) != expected or not all(np.isfinite(v).all() for v in stats.values()):
+        # Una σ nula o negativa dividiría por cero o invertiría el signo de un término.
+        valid = all(math.isfinite(mu) and math.isfinite(sigma) and sigma > 0 for mu, sigma in stats.values())
+        if set(stats) != set(self.TERMS) or not valid:
+            logger.warning("Ignoring inconsistent Z-score cache %s", cache_path)
             return None
         return stats
 
@@ -377,8 +394,12 @@ class HamiltonianBuilder:
         """
         rng = np.random.default_rng(self.kwargs.get('zscore_seed', 42))
         accum: Dict[str, List[float]] = {key: [] for key in self.TERMS}
+        # Permite detener la calibración (cancelación o plazo) sin esperar a que termine.
+        interrupt_check = self.kwargs.get('interrupt_check')
 
-        for _ in range(n_decoys):
+        for index in range(n_decoys):
+            if interrupt_check is not None and index % 100 == 0:
+                interrupt_check()
             seq = rng.integers(0, self.n_aa, size=self.L).tolist()
             for key, value in self.raw_terms(seq).items():
                 accum[key].append(value)
