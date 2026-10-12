@@ -163,8 +163,11 @@ def is_interfacial(environment: Dict[str, Any]) -> bool:
 
 
 def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
-    """Configuración que determina el Hamiltoniano: entornos con la misma clave son idénticos
-    aunque tengan distinto nombre de preset (p. ej. interfacial_pos con membrane_charge='neg')."""
+    """Configuración del Hamiltoniano de búsqueda, que usa una fase fija.
+
+    El nombre del preset y su regla de orientación para el score estándar no
+    distinguen dos Hamiltonianos de búsqueda con el mismo sector y carga.
+    """
     env = resolve_environment(environment)
     half_width = float(env["wheel_halfwidth_deg"])
     if half_width >= 180.0:
@@ -173,7 +176,7 @@ def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
     charge = str(env["membrane_charge"])
     if half_width < 0.0:
         return ("all_polar", charge)
-    return ("sector", half_width, is_interfacial(env), float(env["wheel_phase_deg"]), charge)
+    return ("sector", half_width, float(env["wheel_phase_deg"]), charge)
 
 
 def effective_environment(builder: HamiltonianBuilder, codes: List[int], environment: Dict[str, Any]) -> Dict[str, Any]:

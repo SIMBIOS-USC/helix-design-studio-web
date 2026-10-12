@@ -4,6 +4,8 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
+**Current version: 1.0.0rc1**, a release candidate for evaluation. Its parameter-source limitations are described below.
+
 ## Installation
 
 Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering requires a WebGL-capable browser; the viewer is included in the application. Local execution has been tested on macOS with Python 3.12.
@@ -11,6 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
+git checkout v1.0.0rc1
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -47,12 +50,15 @@ This example uses small calibration and reference samples for a quick execution 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
 - Searches (Design, Family, Cross-Design, Specificity) optimize the fixed-geometry Hamiltonian: the membrane sector keeps the preset wheel phase, so the environment and charge terms are single-residue terms and the electrostatic, pairwise and helix-neighbor terms are pair terms. Their rankings and margins use this design geometry.
 - The standard score (Score, Compare, Penetration, and the score reported for designed sequences) orients each sequence in an interfacial environment by its own hydrophobic moment; the random reference sequences and calibration decoys are oriented by the same rule. With this orientation the environment terms depend on the whole sequence. Design results report both the standard score and the design-geometry energy.
-- The helix-neighbor term sums the i,i+1, i,i+3 and i,i+4 interaction matrices directly, as in Eq. 3 of the method article: each matrix is added with its stored sign, without any per-matrix transformation. The i,i+1 table holds residue-pair propensities and the i,i+3/i,i+4 tables hold side-chain interaction energies; both are standardized per term during calibration. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
+- The helix-neighbor term adds entries from the i,i+1, i,i+3 and i,i+4 tables with their stored signs, without transforming the individual matrices. For each separation k, the sum is divided by L−k; the three contributions are then combined into one `helix_neigh` term and standardized together against calibration sequences. M1 is not standardized separately from M3/M4. This implements an additive neighbor term; Eq. 3 of the method article does not by itself verify the numerical provenance or preprocessing of the supplied tables. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
 - The i,i+3 and i,i+4 residue order is provisional: it is reconstructed from a file header that listed 22 labels (Y and V duplicated) for 20 columns, keeping the first occurrence of each, so the last two rows and columns (Cys, Pro) are all zero. The numerical source and transformation of the helix-neighbor tables have not been verified against the method article's Supporting Information. Checksums of the tables are recorded below; results are conditional on this ordering and must be recomputed if it changes.
+- Partial checks of the M1 table against its candidate primary source reproduce its first row but reveal differences in other checked cells. Its complete derivation, source-axis convention and use at i,i+1 remain unresolved; see [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance). The current numbers are preserved, and the candidate must not be treated as a validated reconstruction of those source data.
 - The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
 - Calibration and reference distributions depend on sequence length, alphabet, environment, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
+
+The [Table 1 comparison](CHANGELOG.md#comparison-with-the-method-articles-table-1) supplies the exact input sequences, reference Z-scores, protocol and numerical output for comparing direct M1 entries with −ln(M1). It evaluates the current software under a declared protocol and does not establish the settings used for the published calculations.
 
 ### Parameter table checksums
 
@@ -73,6 +79,12 @@ python -m unittest discover -s tests -v
 ```
 
 The tests cover the computational API, streaming responses, static assets, idealized PDB export, input validation, request limits, usage logging, calibration caching, label-based parameter indexing, literature residue scales and consistency between workflows. They check implementation behavior; they do not establish sampling convergence or experimental validity.
+
+The browser-side partial-result export tests additionally use Node.js 18 or later with its built-in test runner (no npm packages required):
+
+```bash
+node --test tests/test_partial_exports.js
+```
 
 ## Configuration and data
 
@@ -100,7 +112,8 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 - `app/`: API, search workflows and static browser interface.
 - `Code/`: scoring, calibration and four parameter tables.
 - `tests/` and `examples/`: automated checks and an API request example.
-- `tools/measure_changes.py`: measures the numerical effect of each model change between versions.
+- `tools/measure_changes.py`: measures the numerical effect of each model change between versions, with a separate control that changes only the search random stream.
+- `tools/reproduce_article_table1.py` and `tools/data/`: compare two M1 conventions with the transcribed Table 1 values using a fully specified protocol.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.
 
 ## Citation and license

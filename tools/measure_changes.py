@@ -1,7 +1,7 @@
-"""Measure the numerical effect of each model change between 0.1.0 and 1.0.0.
+"""Measure the numerical effect of each model change between 0.1.0 and the current candidate.
 
-Each variant restores one 0.1.0 behaviour on top of the current code, so its difference from
-the current results isolates that change. With --baseline, the complete 0.1.0 source tree is
+Each variant restores one 0.1.0 behaviour on top of the current code with the other settings
+held fixed. With --baseline, the complete 0.1.0 source tree is
 also run for an end-to-end comparison of the scoring benchmark.
 
     python tools/measure_changes.py --baseline /path/to/helix-design-studio-web-0.1.0
@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -158,15 +160,27 @@ def random_percentile():
     return float(np.mean(values))
 
 
-def designs(seed_offset=0):
+@contextlib.contextmanager
+def search_seed_offset(offset):
+    """Change only the search stream; retain calibration and reference seeds."""
+    original = engine.rng_seed
+
+    def adjusted(seed, stream, *index):
+        return original(seed + offset if stream == engine.SEARCH_STREAM else seed, stream, *index)
+
+    with patched_attribute(engine, "rng_seed", adjusted):
+        yield
+
+
+def designs(search_offset=0):
     out = {}
-    for preset in DESIGN["presets"]:
-        for seed in DESIGN["seeds"]:
-            seed += seed_offset
-            with quiet():
-                result = engine.design_sequence(DESIGN["length"], {"preset": preset}, ALPHABET, n_decoys=N_DECOYS,
-                                                steps=DESIGN["steps"], restarts=DESIGN["restarts"], seed=seed)
-            out[(preset, seed - seed_offset)] = result["sequence"]
+    with search_seed_offset(search_offset):
+        for preset in DESIGN["presets"]:
+            for seed in DESIGN["seeds"]:
+                with quiet():
+                    result = engine.design_sequence(DESIGN["length"], {"preset": preset}, ALPHABET, n_decoys=N_DECOYS,
+                                                    steps=DESIGN["steps"], restarts=DESIGN["restarts"], seed=seed)
+                out[(preset, seed)] = result["sequence"]
     return out
 
 
@@ -220,34 +234,68 @@ print(json.dumps({{"scores": out, "random_percentile": float(np.mean(pct))}}))
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--baseline", type=Path, help="checkout of the 0.1.0 source tree for an end-to-end comparison")
+    parser.add_argument("--output", type=Path, help="save protocol, scores and summary statistics as JSON")
     args = parser.parse_args()
 
     current_scores = score_benchmark()
     current_percentile = random_percentile()
     current_designs = designs()
+    alternate_designs = designs(search_offset=100)
+    search_control = changed_positions(current_designs, alternate_designs)
+    design_rows = lambda values: [{"preset": preset, "seed": seed, "sequence": sequence}
+                                  for (preset, seed), sequence in values.items()]
+    report = {
+        "protocol": {"alphabet": ALPHABET, "presets": PRESETS, "peptides": PEPTIDES,
+                     "n_decoys": N_DECOYS, "n_random": N_RANDOM, "score_seed": SEED,
+                     "weights": engine.DEFAULT_WEIGHTS,
+                     "random_sequences": {"count": RANDOM_COUNT, "length": RANDOM_LENGTH, "seed": 7},
+                     "design": DESIGN, "search_control_offset": 100,
+                     "search_control": "Only SEARCH_STREAM changes from [seed,2] to [seed+100,2]; calibration and reference seeds remain fixed.",
+                     "seed_protocol": engine.SEED_PROTOCOL},
+        "runtime": {"python": platform.python_version(), "numpy": np.__version__},
+        "source_files_sha256": {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest()
+                                for name in ("app/engine.py", "Code/core/hamiltonian_builder.py", "Code/data_loaders/energy_matrix_loader.py")},
+        "parameters_sha256": model.parameter_set_sha256(),
+        "current_scores": current_scores,
+        "current_random_percentile": current_percentile,
+        "current_designs": design_rows(current_designs),
+        "alternate_search_designs": design_rows(alternate_designs),
+        "search_control_changed_fraction": search_control,
+        "variants": {},
+    }
 
     print(f"Benchmark: {len(PEPTIDES)} reference peptides x {len(PRESETS)} presets, full alphabet, "
           f"n_decoys={N_DECOYS}, n_random={N_RANDOM}, seed={SEED}; random sequences: {RANDOM_COUNT} x L={RANDOM_LENGTH} "
           f"(interfacial_neg); designs: L={DESIGN['length']}, {DESIGN['steps']} steps x {DESIGN['restarts']} restarts, "
           f"seeds {DESIGN['seeds']}, presets {DESIGN['presets']}.\n")
     print(f"Current version: mean percentile of random sequences {current_percentile:.1f} (unbiased: 50). "
-          f"Search-noise reference: designs from the same model with other seeds differ in "
-          f"{100 * changed_positions(current_designs, designs(seed_offset=100)):.0f}% of positions.\n")
+          f"Search-stream control: with calibration and random references fixed, designs using search entropy "
+          f"[seed+100,2] instead of [seed,2] differ in {100 * search_control:.0f}% of positions. "
+          "This descriptive control does not attribute model-change effects to search randomness.\n")
     print("| Restored 0.1.0 behaviour | median abs dZ | max abs dZ (case) | Spearman of Z | random percentile | design positions changed |")
     print("|---|---|---|---|---|---|")
     for label, variant in VARIANTS.items():
         with variant():
             scores = score_benchmark()
             percentile = random_percentile()
-            changed = "n/a (scoring only)" if label in SCORING_ONLY else f"{100 * changed_positions(current_designs, designs()):.0f}%"
+            variant_designs = None if label in SCORING_ONLY else designs()
+            fraction = None if variant_designs is None else changed_positions(current_designs, variant_designs)
+            changed = "n/a (scoring only)" if fraction is None else f"{100 * fraction:.0f}%"
         stats = compare_scores(current_scores, scores)
+        report["variants"][label] = {**stats, "scores": scores, "random_percentile": percentile,
+                                      "design_changed_fraction": fraction,
+                                      "designs": None if variant_designs is None else design_rows(variant_designs)}
         print(f"| {label} | {stats['median_abs_dz']:.3f} | {stats['max_abs_dz']:.3f} ({stats['max_case']}) | "
               f"{stats['spearman']:.3f} | {percentile:.1f} | {changed} |")
     if args.baseline:
         baseline = baseline_scores(args.baseline.resolve())
         stats = compare_scores(current_scores, baseline["scores"])
+        report["baseline"] = {**baseline, **stats}
         print(f"| Complete 0.1.0 source tree | {stats['median_abs_dz']:.3f} | {stats['max_abs_dz']:.3f} ({stats['max_case']}) | "
               f"{stats['spearman']:.3f} | {baseline['random_percentile']:.1f} | not compared (different random streams) |")
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

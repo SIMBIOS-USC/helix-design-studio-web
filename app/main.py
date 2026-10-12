@@ -122,7 +122,7 @@ class RequestLimitsMiddleware:
         await self.app(scope, limited_receive, secured_send)
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.0rc1"
 PARAMETERS_SHA256 = parameter_set_sha256()
 
 app = FastAPI(title="Helix Design Studio", version=APP_VERSION)
@@ -878,14 +878,24 @@ def _stream_calculation(
 
         final_payload: Dict[str, Any] = {}
         try:
+            provenance = _provenance(payload)
             while True:
                 # Cada paso puede tardar (una búsqueda completa): se vigila la desconexión mientras dura.
                 update = await _await_calculation(request, step, cancelled)
                 if update is None:
                     break
-                if update.get("type") == "final":
-                    final_payload = update.get("payload", {})
-                    update = {**update, "payload": {**final_payload, "provenance": _provenance(payload)}}
+                update_type = update.get("type")
+                if update_type in ("meta", "final"):
+                    event_payload = update.get("payload", {})
+                    if update_type == "final":
+                        final_payload = event_payload
+                    update = {**update, "payload": {**event_payload, "provenance": provenance}}
+                elif update_type == "candidate":
+                    event_payload = update.get("payload", {})
+                    update = {**update, "payload": {
+                        **event_payload,
+                        "member": {**event_payload["member"], "provenance": provenance},
+                    }}
                 yield json.dumps(update) + "\n"
         except CalculationCancelled:
             _log_usage_event(request, endpoint, payload, "cancelled", time.perf_counter() - started)

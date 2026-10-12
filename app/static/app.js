@@ -1348,13 +1348,21 @@ function renderSpecificityState(state) {
   `;
 }
 
+function partialExportMetadata(state, members) {
+  const provenance = state.provenance || members.find((member) => member.provenance)?.provenance;
+  return { provenance, request: provenance?.request || state.request };
+}
+
 function partialSpecificityPayload(state, reason) {
-  const candidates = [...(state.acceptedCandidates || [])].sort(compareSpecificityCandidates);
-  candidates.forEach((candidate, idx) => {
-    candidate.specificity_design = { ...candidate.specificity_design, rank: idx + 1 };
-  });
+  const candidates = [...(state.acceptedCandidates || [])]
+    .sort(compareSpecificityCandidates)
+    .map((candidate, idx) => ({
+      ...candidate,
+      specificity_design: { ...candidate.specificity_design, rank: idx + 1 },
+    }));
   return {
     ...candidates[0],
+    ...partialExportMetadata(state, candidates),
     candidates,
     specificity_collection: {
       requested: state.targetCount || candidates.length,
@@ -1365,6 +1373,20 @@ function partialSpecificityPayload(state, reason) {
       partial: true,
       partial_reason: reason,
     },
+  };
+}
+
+function partialFamilyPayload(state, reason) {
+  const members = [...state.members].sort((a, b) =>
+    Number(a.design_geometry?.energy ?? a.energy) - Number(b.design_geometry?.energy ?? b.energy));
+  return {
+    ...partialExportMetadata(state, members),
+    members,
+    family_size_requested: state.target,
+    family_size_returned: members.length,
+    partial: true,
+    partial_reason: reason,
+    status_message: `Retained ${members.length} fully evaluated candidates before the calculation was ${reason}.`,
   };
 }
 
@@ -1426,7 +1448,7 @@ function renderFamilyState(state) {
       </div>
     `).join('')
     : `<div class="family-empty">No accepted candidates yet. They will appear here as they are found.</div>`;
-  const downloadBtn = state.finalData
+  const downloadBtn = state.finalData && state.members.length
     ? `<button class="ghost-btn" type="button" data-download-family>Download JSON</button>`
     : '';
   const stopBtn = state.running
@@ -1605,6 +1627,8 @@ specificityForm.addEventListener('submit', async (event) => {
     completed: 0,
     total: 0,
     acceptedCandidates: [],
+    request: payload,
+    provenance: null,
   };
 
   // The Stop button stays in place (and keeps keyboard focus); only the progress block is redrawn.
@@ -1637,6 +1661,7 @@ specificityForm.addEventListener('submit', async (event) => {
 
   try {
     await postNDJSON('/api/specificity-design-stream', payload, (message) => {
+      state.provenance = message.payload?.provenance || state.provenance || message.payload?.member?.provenance || null;
       if (message.type === 'meta') {
         state.phase = 'initializing';
         state.phaseLabel = 'Initializing';
@@ -1703,6 +1728,7 @@ specificityForm.addEventListener('submit', async (event) => {
     }, { signal: controller.signal });
     if (!finished) throw new Error('The calculation ended without a final result.');
   } catch (error) {
+    if (finished) return;
     if (error.name === 'AbortError') {
       showPartial('stopped by the user');
     } else {
@@ -1778,6 +1804,8 @@ familyForm.addEventListener('submit', async (event) => {
     finalData: null,
     running: true,
     partialReason: '',
+    request: payload,
+    provenance: null,
   };
 
   const refresh = () => {
@@ -1798,6 +1826,7 @@ familyForm.addEventListener('submit', async (event) => {
 
   try {
     await postNDJSON('/api/design-family-stream', payload, (message) => {
+      state.provenance = message.payload?.provenance || state.provenance || message.payload?.member?.provenance || null;
       if (message.type === 'meta') {
         state.note = `Searching for ${state.target} distinct low-energy candidates. Minimum enforced Hamming diversity: ${message.payload.min_distance}.`;
         state.environment = message.payload.environment.preset;
@@ -1828,9 +1857,17 @@ familyForm.addEventListener('submit', async (event) => {
     refresh();
   } catch (error) {
     state.running = false;
+    if (state.finalData) {
+      refresh();
+      return;
+    }
     const aborted = error.name === 'AbortError';
     state.partialReason = aborted ? 'stopped by the user' : 'interrupted by an error';
     if (state.members.length) {
+      state.finalData = partialFamilyPayload(state, state.partialReason);
+      state.members = state.finalData.members;
+      state.accepted = state.finalData.family_size_returned;
+      state.note = state.finalData.status_message;
       refresh();
       if (!aborted) familyResult.insertAdjacentHTML('afterbegin', errorHtml(error.message));
     } else {

@@ -194,6 +194,15 @@ class WebSmokeTests(unittest.TestCase):
             # Same Hamiltonian under another preset name.
             ("/api/specificity-design", {**specificity, "off_target_environments": [
                 {"preset": "interfacial_pos", "membrane_charge": "neg"}]}),
+            # Search geometry is fixed even when the preset's standard scoring rule differs.
+            ("/api/specificity-design", {
+                "target_environment": {"preset": "interfacial_neg", "membrane_charge": "neu"},
+                "off_target_environments": [{"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}],
+            }),
+            ("/api/specificity-design-stream", {
+                "target_environment": {"preset": "interfacial_neg", "membrane_charge": "neu"},
+                "off_target_environments": [{"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}],
+            }),
             ("/api/score", {"sequence": "ALKD", "n_decoy": 100}),
         ]
         for route, payload in invalid:
@@ -267,6 +276,37 @@ class WebSmokeTests(unittest.TestCase):
         self.assertEqual(result["random_reference"]["seed_entropy"], [7, 1])
         family = self.stream("/api/design-family-stream", {**self.design, "family_size": 2, "oversample_factor": 1})
         self.assertEqual(family["provenance"]["request"]["family_size"], 2)
+
+    def test_stream_candidates_include_provenance(self):
+        from app import main
+
+        requests = {
+            "/api/design-family-stream": {
+                **self.design, "family_size": 2, "oversample_factor": 1,
+            },
+            "/api/specificity-design-stream": {
+                **self.design, "target_environment": self.env_a,
+                "off_target_environments": [self.env_b], "num_sequences": 1,
+            },
+        }
+        for route, request in requests.items():
+            with self.subTest(route=route):
+                with self.client.stream("POST", route, json=request) as response:
+                    self.assertEqual(response.status_code, 200)
+                    events = [json.loads(line) for line in response.iter_lines() if line]
+                self.assertEqual(events[0]["type"], "meta")
+                self.assertEqual(events[-1]["type"], "final")
+                provenance = events[0]["payload"]["provenance"]
+                self.assertEqual(provenance["version"], main.APP_VERSION)
+                self.assertEqual(provenance["parameters_sha256"], main.PARAMETERS_SHA256)
+                request_model = (main.FamilyDesignRequest if route == "/api/design-family-stream"
+                                 else main.SpecificityDesignRequest)
+                self.assertEqual(provenance["request"], request_model(**request).model_dump(mode="json"))
+                candidates = [event["payload"]["member"] for event in events if event["type"] == "candidate"]
+                self.assertTrue(candidates)
+                for member in candidates:
+                    self.assertEqual(member["provenance"], provenance)
+                self.assertEqual(events[-1]["payload"]["provenance"], provenance)
 
     def test_calibration_honours_cancellation(self):
         import threading
