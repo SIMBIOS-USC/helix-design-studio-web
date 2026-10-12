@@ -79,25 +79,9 @@ def positional_tables():
     def patched(self):
         original(self)
         n = self.n_aa
-        self.M1 = -np.log(np.array(loader._load_first_neighbors_matrix_file()[0])[:n, :n])
+        self.M1 = np.array(loader._load_first_neighbors_matrix_file()[0])[:n, :n]
         self.M3 = np.array(loader._load_third_neighbors_matrix_file()[0])[:n, :n]
         self.M4 = np.array(loader._load_fourth_neighbors_matrix_file()[0])[:n, :n]
-
-    model.HamiltonianBuilder._load_matrices_from_files = patched
-    try:
-        yield
-    finally:
-        model.HamiltonianBuilder._load_matrices_from_files = original
-
-
-@contextlib.contextmanager
-def positive_pair_propensity():
-    """0.1.0 added the i,i+1 propensity P itself to the minimized energy."""
-    original = model.HamiltonianBuilder._load_matrices_from_files
-
-    def patched(self):
-        original(self)
-        self.M1 = np.exp(-self.M1)
 
     model.HamiltonianBuilder._load_matrices_from_files = patched
     try:
@@ -142,7 +126,6 @@ def query_only_orientation_score(sequence, environment, residues, weights=None, 
 
 VARIANTS = {
     "Table indexing by alphabet position": positional_tables,
-    "Helix-pair energy +P instead of -ln P": positive_pair_propensity,
     "Ser/Thr hydrophobicities swapped": lambda: patched_values(model.FAUCHERE_PLISKA_HYDROPHOBICITY, {"S": 0.26, "T": -0.04}),
     "Pro helix propensity 3.15": lambda: patched_values(model.PACE_SCHOLTZ_HELIX_PROPENSITY, {"P": 3.15}),
     "MJ contacts up to i+1 (d_max = 1)": lambda: patched_attribute(engine, "MJ_MAX_DISTANCE", 1),

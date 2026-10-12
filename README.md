@@ -47,11 +47,23 @@ This example uses small calibration and reference samples for a quick execution 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
 - Searches (Design, Family, Cross-Design, Specificity) optimize the fixed-geometry Hamiltonian: the membrane sector keeps the preset wheel phase, so the environment and charge terms are single-residue terms and the electrostatic, pairwise and helix-neighbor terms are pair terms. Their rankings and margins use this design geometry.
 - The standard score (Score, Compare, Penetration, and the score reported for designed sequences) orients each sequence in an interfacial environment by its own hydrophobic moment; the random reference sequences and calibration decoys are oriented by the same rule. With this orientation the environment terms depend on the whole sequence. Design results report both the standard score and the design-geometry energy.
-- Helix-pair propensities *P* enter the energy as −ln *P*; i,i+3 and i,i+4 tables are energies (negative values are stabilizing). All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
+- The helix-neighbor term sums the i,i+1, i,i+3 and i,i+4 interaction matrices directly, as in Eq. 3 of the method article: each matrix is added with its stored sign, without any per-matrix transformation. The i,i+1 table holds residue-pair propensities and the i,i+3/i,i+4 tables hold side-chain interaction energies; both are standardized per term during calibration. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
+- The i,i+3 and i,i+4 residue order is provisional: it is reconstructed from a file header that listed 22 labels (Y and V duplicated) for 20 columns, keeping the first occurrence of each, so the last two rows and columns (Cys, Pro) are all zero. The numerical source and transformation of the helix-neighbor tables have not been verified against the method article's Supporting Information. Checksums of the tables are recorded below; results are conditional on this ordering and must be recomputed if it changes.
 - The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
 - Calibration and reference distributions depend on sequence length, alphabet, environment, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
+
+### Parameter table checksums
+
+SHA-256 of the parameter tables in `Code/core/resources/`, so a result's parameter set can be identified independently of the checksum recorded in each result's `provenance` block:
+
+```text
+mj_matrix.txt         53af4769e5cd9c185938a5f2dd23b0374d8f4dc5e7ca2e32e825b8f79f2c6171
+helix_pairs_prop.txt  92208ffa4172357f928950f674163d42bd3786838a551255f04ae4670b5c7359
+helix_sd_i_3.txt      ac0fcc7c17ffeaeea6664906b5473c1c9ddd2f2145d0d75626e674b7eb0505c5
+helix_sd_i_4.txt      44c54eb5ec3ea972fd029da96ba51db8a78dddd8e1b5d0a593d48c3e49872045
+```
 
 ## Tests
 

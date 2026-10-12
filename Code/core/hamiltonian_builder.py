@@ -242,12 +242,9 @@ class HamiltonianBuilder:
     def _load_matrices_from_files(self):
         """Carga MJ y matrices de vecinos estadísticos k=1,3,4 en el orden del alfabeto."""
         self.mj_matrix = self._matrix_for_alphabet(*_load_energy_matrix_file())
-        propensity = self._matrix_for_alphabet(*_load_first_neighbors_matrix_file())
-        if not (propensity > 0).all():
-            raise ValueError("Helix pair propensities must be positive to convert them into energies")
-        # Propensión -> energía estadística -ln(P): un par favorable (P > 1) reduce la energía,
-        # con la misma convención que M3/M4 (negativo = estabilizante).
-        self.M1 = -np.log(propensity)
+        # Eq. 3 of the method article sums the normalized neighbor matrices M^(1), M^(3), M^(4)
+        # directly; all three are added with their stored sign, with no per-matrix transformation.
+        self.M1 = self._matrix_for_alphabet(*_load_first_neighbors_matrix_file())
         self.M3 = self._matrix_for_alphabet(*_load_third_neighbors_matrix_file())
         self.M4 = self._matrix_for_alphabet(*_load_fourth_neighbors_matrix_file())
 

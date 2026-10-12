@@ -385,9 +385,10 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         residues = ["K", "P", "E", "A", "C", "L"]
         builder = self.engine.build_builder(6, residues, self.engine.resolve_environment(self.env_a), n_decoys=100)
         index = {aa: i for i, aa in enumerate(residues)}
-        # Values copied from the parameter tables in Code/core/resources.
-        self.assertAlmostEqual(builder.M1[index["A"], index["A"]], -math.log(2.734))
-        self.assertAlmostEqual(builder.M1[index["K"], index["E"]], -math.log(1.490))
+        # Values copied from the parameter tables in Code/core/resources. M1, M3 and M4 are
+        # summed directly, as in Eq. 3 of the method article (no per-matrix transformation).
+        self.assertAlmostEqual(builder.M1[index["A"], index["A"]], 2.734)
+        self.assertAlmostEqual(builder.M1[index["K"], index["E"]], 1.490)
         self.assertAlmostEqual(builder.M3[index["E"], index["K"]], -0.150)
         self.assertAlmostEqual(builder.M4[index["E"], index["K"]], -0.420)
         self.assertAlmostEqual(builder.M4[index["K"], index["E"]], 0.100)
@@ -448,14 +449,20 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         browser_scale = {aa: float(value) for aa, value in re.findall(r"([A-Z]):\s*(-?[0-9.]+)", block)}
         self.assertEqual(browser_scale, fauchere_pliska)
 
-    def test_helix_pair_term_favors_helix_forming_pairs(self):
+    def test_helix_neighbor_term_sums_matrices_directly(self):
+        """Eq. 3 of the method article sums M^(1), M^(3), M^(4) directly (no per-matrix
+        transform); each separation k is averaged over its (L - k) pairs."""
         env = self.engine.resolve_environment(self.env_b)
         residues = ["A", "E", "G", "L", "P"]
         builder = self.engine.build_builder(10, residues, env, n_decoys=100)
-        neigh = {aa: builder._raw_helix_neigh(self.engine.seq_to_codes(aa * 10, residues)) for aa in residues}
-        self.assertLess(neigh["A"], neigh["G"])
-        self.assertLess(neigh["E"], neigh["G"])
-        self.assertLess(neigh["L"], neigh["P"])
+        codes = self.engine.seq_to_codes("AEGLPAEGLP", residues)
+        expected = 0.0
+        for k, matrix in ((1, builder.M1), (3, builder.M3), (4, builder.M4)):
+            pairs = [matrix[codes[i], codes[i + k]] for i in range(len(codes) - k)]
+            expected += sum(pairs) / (len(codes) - k)
+        self.assertAlmostEqual(builder._raw_helix_neigh(codes), expected, places=12)
+        # M1 holds the raw propensity values from the file, not a logarithm of them.
+        self.assertAlmostEqual(builder.M1[residues.index("A"), residues.index("A")], 2.734)
 
     def test_random_sequences_are_not_favored_by_phase_alignment(self):
         """Query, calibration decoys and reference sequences share the same orientation rule."""
