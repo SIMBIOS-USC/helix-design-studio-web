@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Current version: 1.0.0rc3**, a release candidate for evaluation. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
+**Current version: 1.0.0rc4**, a release candidate for evaluation. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
 
 ## Installation
 
@@ -13,7 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
-git checkout v1.0.0rc3
+git checkout v1.0.0rc4
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -31,7 +31,7 @@ docker build -t helix-design-studio .
 docker run --rm -p 8000:8000 helix-design-studio
 ```
 
-The image runs as an unprivileged user and defines a health check. Set `PORT` to change its internal listening port and adjust the port mapping accordingly, `WEB_CONCURRENCY` to run several worker processes, and `FORWARDED_ALLOW_IPS` to the address of the reverse proxy whose `X-Forwarded-For` header should be trusted. Calibration caches and optional usage logs are written to `/tmp/helix-cache` and `/tmp/helix-usage`; mount volumes there (for example `-v helix-cache:/tmp/helix-cache`) to keep them across container restarts. Container execution has not been tested.
+The image runs as an unprivileged user and defines a health check. Set `PORT` to change its internal listening port and adjust the port mapping accordingly, `WEB_CONCURRENCY` to run several worker processes, and `FORWARDED_ALLOW_IPS` to the address of the reverse proxy whose `X-Forwarded-For` header should be trusted. Calibration caches and optional usage logs are written to `/tmp/helix-cache` and `/tmp/helix-usage`; mount volumes there (for example `-v helix-cache:/tmp/helix-cache`) to keep them across container restarts. Container startup and the scoring example have been verified on Linux.
 
 ## API example and reproducibility
 

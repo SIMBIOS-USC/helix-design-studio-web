@@ -122,7 +122,7 @@ class RequestLimitsMiddleware:
         await self.app(scope, limited_receive, secured_send)
 
 
-APP_VERSION = "1.0.0rc3"
+APP_VERSION = "1.0.0rc4"
 PARAMETERS_SHA256 = parameter_set_sha256()
 
 app = FastAPI(title="Helix Design Studio", version=APP_VERSION)

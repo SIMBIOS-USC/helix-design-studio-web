@@ -27,7 +27,11 @@ def main():
     request = Request(
         args.base_url.rstrip("/") + ENDPOINTS[args.operation],
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Helix-Design-Studio-API/1.0",
+        },
         method="POST",
     )
     try:
