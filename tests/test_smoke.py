@@ -428,7 +428,7 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         # Values copied from the parameter tables in Code/core/resources. M1, M3 and M4 are
         # summed directly, as in Eq. 3 of the method article (no per-matrix transformation).
         self.assertAlmostEqual(builder.M1[index["A"], index["A"]], 2.734)
-        self.assertAlmostEqual(builder.M1[index["K"], index["E"]], 1.490)
+        self.assertAlmostEqual(builder.M1[index["K"], index["E"]], 2.264)
         self.assertAlmostEqual(builder.M3[index["E"], index["K"]], -0.150)
         self.assertAlmostEqual(builder.M4[index["E"], index["K"]], -0.420)
         self.assertAlmostEqual(builder.M4[index["K"], index["E"]], 0.100)

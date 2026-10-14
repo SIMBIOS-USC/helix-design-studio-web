@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Current version: 1.0.0rc1**, a release candidate for evaluation. Its parameter-source limitations are described below.
+**Current version: 1.0.0rc2**, a release candidate for evaluation. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
 
 ## Installation
 
@@ -13,7 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
-git checkout v1.0.0rc1
+git checkout v1.0.0rc2
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -50,15 +50,17 @@ This example uses small calibration and reference samples for a quick execution 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
 - Searches (Design, Family, Cross-Design, Specificity) optimize the fixed-geometry Hamiltonian: the membrane sector keeps the preset wheel phase, so the environment and charge terms are single-residue terms and the electrostatic, pairwise and helix-neighbor terms are pair terms. Their rankings and margins use this design geometry.
 - The standard score (Score, Compare, Penetration, and the score reported for designed sequences) orients each sequence in an interfacial environment by its own hydrophobic moment; the random reference sequences and calibration decoys are oriented by the same rule. With this orientation the environment terms depend on the whole sequence. Design results report both the standard score and the design-geometry energy.
-- The helix-neighbor term adds entries from the i,i+1, i,i+3 and i,i+4 tables with their stored signs, without transforming the individual matrices. For each separation k, the sum is divided by L−k; the three contributions are then combined into one `helix_neigh` term and standardized together against calibration sequences. M1 is not standardized separately from M3/M4. This implements an additive neighbor term; Eq. 3 of the method article does not by itself verify the numerical provenance or preprocessing of the supplied tables. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
-- The i,i+3 and i,i+4 residue order is provisional: it is reconstructed from a file header that listed 22 labels (Y and V duplicated) for 20 columns, keeping the first occurrence of each, so the last two rows and columns (Cys, Pro) are all zero. The numerical source and transformation of the helix-neighbor tables have not been verified against the method article's Supporting Information. Checksums of the tables are recorded below; results are conditional on this ordering and must be recomputed if it changes.
-- Partial checks of the M1 table against its candidate primary source reproduce its first row but reveal differences in other checked cells. Its complete derivation, source-axis convention and use at i,i+1 remain unresolved; see [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance). The current numbers are preserved, and the candidate must not be treated as a validated reconstruction of those source data.
+- The helix-neighbor term adds entries from the i,i+1, i,i+3 and i,i+4 tables with their stored signs, without transforming the individual matrices. For each separation k, the sum is divided by L−k; the three contributions are combined into one `helix_neigh` term and standardized together against calibration sequences. M1 is not standardized separately from M3/M4. This empirical scoring term combines dimensionless relative propensities with side-chain interaction parameters; its standardized value is not an absolute thermodynamic energy. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
+- M1 uses the 400 values in Nacar (2020), Figure 3. That source characterizes hydrogen-bonded n,n+4 pairs; reusing it at i,i+1 is an empirical model adaptation, not evidence for adjacent-residue pair propensities. Source columns identify the earlier carbonyl acceptor and rows the later amide donor. The runtime table is transposed so that rows identify residue i and columns residue i+1.
+- M3 and M4 use the 324 values per separation in Muñoz–Serrano (1994), Table 2, in kcal/mol. The published table contains 18 residues and omits Cys and Pro. The application assigns zero contribution to any M3/M4 pair containing Cys or Pro (76 additional entries per matrix); these are model defaults, not measured zero interactions. This convention does not remove the separate single-residue helix propensity for Pro.
 - The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
 - Calibration and reference distributions depend on sequence length, alphabet, environment, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
 
-The [Table 1 comparison](CHANGELOG.md#comparison-with-the-method-articles-table-1) supplies the exact input sequences, reference Z-scores, protocol and numerical output for comparing direct M1 entries with −ln(M1). It evaluates the current software under a declared protocol and does not establish the settings used for the published calculations.
+Source citations, axis definitions and the complete comparison procedure are given in [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance).
+
+The [current Table 1 rerun](tools/data/article_table1_comparison_1.0.0rc2.json) evaluates the seven exact sequence strings and fourteen rounded Z-scores of the published method article, using source-restored parameters and the declared calibration/reference protocol. Its mean and maximum absolute Z-score differences are 0.303771 and 0.439849. This is a new execution rather than a reconstruction of the historical calculation settings. The [changelog](CHANGELOG.md) also preserves version-specific results of the earlier 1.0.0rc1 comparison. The source contains zero M1 entries, so the optional negative-log comparison is undefined without an additional model assumption; the default rerun uses direct entries.
 
 ### Parameter table checksums
 
@@ -66,9 +68,9 @@ SHA-256 of the parameter tables in `Code/core/resources/`, so a result's paramet
 
 ```text
 mj_matrix.txt         53af4769e5cd9c185938a5f2dd23b0374d8f4dc5e7ca2e32e825b8f79f2c6171
-helix_pairs_prop.txt  92208ffa4172357f928950f674163d42bd3786838a551255f04ae4670b5c7359
+helix_pairs_prop.txt  266410b1335e1de1341e39e031ecd23054e174d3017322d51be1bb20c4e19684
 helix_sd_i_3.txt      ac0fcc7c17ffeaeea6664906b5473c1c9ddd2f2145d0d75626e674b7eb0505c5
-helix_sd_i_4.txt      44c54eb5ec3ea972fd029da96ba51db8a78dddd8e1b5d0a593d48c3e49872045
+helix_sd_i_4.txt      492bb545cc304bd51a417ad7ffa4e9cac6babf8cf4b256a828406551ccab4897
 ```
 
 ## Tests
@@ -78,7 +80,15 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-The tests cover the computational API, streaming responses, static assets, idealized PDB export, input validation, request limits, usage logging, calibration caching, label-based parameter indexing, literature residue scales and consistency between workflows. They check implementation behavior; they do not establish sampling convergence or experimental validity.
+The tests cover the computational API, streaming responses, static assets, idealized PDB export, input validation, request limits, usage logging, calibration caching, label-based parameter indexing, literature residue scales, all published neighbor parameters and consistency between workflows. They do not establish sampling convergence or experimental validity.
+
+To check the parameter data independently of the API, run:
+
+```bash
+python tools/verify_parameter_sources.py
+```
+
+This compares all 400 M1 values and all 324 published values in each of M3/M4, using the source axis labels. The 76 Cys/Pro defaults per M3/M4 matrix are checked separately and are not counted as published data. Source CSVs, citations and checksums are included in `tools/data/parameter_sources/`.
 
 The browser-side partial-result export tests additionally use Node.js 18 or later with its built-in test runner (no npm packages required):
 
@@ -113,7 +123,8 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 - `Code/`: scoring, calibration and four parameter tables.
 - `tests/` and `examples/`: automated checks and an API request example.
 - `tools/measure_changes.py`: measures the numerical effect of each model change between versions, with a separate control that changes only the search random stream.
-- `tools/reproduce_article_table1.py` and `tools/data/`: compare two M1 conventions with the transcribed Table 1 values using a fully specified protocol.
+- `tools/reproduce_article_table1.py` and `tools/data/`: retain the versioned comparison with the method article and its declared protocol.
+- `tools/verify_parameter_sources.py` and `tools/data/parameter_sources/`: verify runtime neighbor parameters against the transcribed primary tables, with explicit source axes and model extensions.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.
 
 ## Citation and license

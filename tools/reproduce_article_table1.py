@@ -1,4 +1,4 @@
-"""Compare two M1 conventions with the exact sequence strings and Z-scores of Table 1.
+"""Rescore the exact sequence strings and Z-scores of the method article's Table 1.
 
 This is a specified rerun with current software, not a reconstruction of the historical
 calculation. The bundled input records its manuscript source and transcription checksums.
@@ -61,6 +61,8 @@ def main():
     parser.add_argument("--n-decoys", type=int, default=2000)
     parser.add_argument("--n-random", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--include-negative-log", action="store_true",
+                        help="Also evaluate -ln(M1); requires a strictly positive parameter matrix")
     args = parser.parse_args()
     if args.n_decoys < 2 or args.n_random < 2 or not 0 <= args.seed <= 2**32 - 1:
         parser.error("Sample sizes must be at least 2 and seed must be between 0 and 2**32-1")
@@ -87,9 +89,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix="helix-table1-") as cache:
         os.environ["HELIX_CACHE_DIR"] = cache
         from app import engine
+        from app.main import APP_VERSION
         from core import hamiltonian_builder as model
         report = {
-            "comparison": "Current software, direct M1 versus -ln(M1), using exact manuscript Table 1 sequence strings",
+            "comparison": "Current software using exact method-article Table 1 sequence strings",
+            "software_version": APP_VERSION,
             "input_sha256": file_sha256(args.input),
             "source": inputs["source"],
             "notes": inputs["notes"],
@@ -101,10 +105,12 @@ def main():
                          "calibration_seed_entropy": [args.seed], "reference_seed_entropy": engine.rng_seed(args.seed, engine.REFERENCE_STREAM),
                          "seed_protocol": engine.SEED_PROTOCOL, "mj_max_distance": engine.MJ_MAX_DISTANCE,
                          "neighbor_normalization": "M1, M3 and M4 contributions are summed, then the combined helix_neigh term is standardized",
-                         "comparison_scope": "Only the M1 transformation differs; calibration is recomputed with the same random sequences for each convention"},
+                         "comparison_scope": ("Only the M1 transformation differs; calibration is recomputed with the same random sequences for each convention"
+                                              if args.include_negative_log else
+                                              "Direct-coefficient rerun with source-restored parameters; deviations from published scores do not reconstruct their historical calculation protocol")},
             "variants": {},
         }
-        for convention in ("direct", "negative_log"):
+        for convention in (("direct", "negative_log") if args.include_negative_log else ("direct",)):
             records = []
             with m1_convention(model, convention):
                 for peptide in inputs["peptides"]:

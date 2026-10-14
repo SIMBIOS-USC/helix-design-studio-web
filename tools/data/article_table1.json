@@ -16,7 +16,15 @@
       "\\texttt{Y5-GWALP23} & apolar core/TM & 23 & \\texttt{GGALYLALALALALALALWLAGA} & 1.91 & -1.55 & -3.46 & apolar core \\\\"
     ],
     "published_reference_sequences_per_score": 10000,
-    "scope": "Exact sequence strings and two-decimal Z-scores transcribed from the identified author manuscript. Final publisher typesetting has not been independently reconciled."
+    "scope": "Exact sequence strings, printed lengths and two-decimal Z-scores independently reconciled with Table 1 of the final published article.",
+    "publisher_reconciliation": {
+      "pdf_sha256": "be4053639738648508db4755a6eda8d4643ddee38cc38c3034ffdc1fcdb49af7",
+      "table_pdf_page": 2,
+      "printed_page": 9777,
+      "matching_sequences": 7,
+      "matching_z_scores": 14,
+      "matching_printed_lengths": 7
+    }
   },
   "notes": [
     "GWALP23 is listed with length 23, but its printed sequence contains 21 residues. The comparison evaluates the exact printed sequence without inferring missing residues.",
