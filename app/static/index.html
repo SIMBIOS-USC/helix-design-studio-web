@@ -125,6 +125,10 @@
               <p><strong>Environment</strong> rewards residues that match the target medium. <strong>Charge</strong> captures residue preference with membrane surface charge. <strong>Local helix</strong> and <strong>Helix neighbors</strong> reward helical propensity. <strong>Pairwise</strong> adds sequence-dependent interaction preferences. <strong>Electrostatics</strong> captures attractive and repulsive charge interactions along the helix. The transverse hydrophobic moment is a geometric descriptor displayed on the helical wheel and used for interfacial alignment. It is not an energy term. Histidine contributes through the hydrophobicity and helical-propensity terms and is neutral in the charge-dependent terms.</p>
             </details>
             <details class="guide-card">
+              <summary>API and programmatic examples</summary>
+              <p>Use the HTTP API to run scoring, sequence design, environment comparisons and exposure scans from scripts. Open <a class="external-link" href="/docs" target="_blank" rel="noopener noreferrer">interactive API documentation</a>, download the <a class="external-link" href="/openapi.json" target="_blank" rel="noopener noreferrer">OpenAPI schema</a>, or follow the <a class="external-link" href="https://github.com/SIMBIOS-USC/helix-design-studio-web/blob/main/docs/API.md" target="_blank" rel="noopener noreferrer">API guide with curl and Python examples</a>. Check the serving version in the schema and retain each result's provenance when reporting calculations.</p>
+            </details>
+            <details class="guide-card">
               <summary>Practical limitations</summary>
               <p>The model scores compatibility with a predefined helical scaffold. It is best interpreted as a relative design and ranking tool. Experimental activity, folding kinetics, insertion depth and membrane disruption require additional validation.</p>
             </details>
