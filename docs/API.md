@@ -97,8 +97,8 @@ python examples/api_client.py compare --output compare-result.json
 python examples/api_client.py penetration --output penetration-result.json
 ```
 
-Choose another installation with `--base-url`, for example `--base-url https://helix.simbioslab.com`. Check that installation's software version before using or comparing its numerical results.
+Choose another installation with `--base-url`, for example `--base-url https://helix.simbioslab.com`. Check that installation's software version before using or comparing its numerical results. The client identifies its requests with `User-Agent: Helix-Design-Studio-API/1.0`; it does not require an API key.
 
 ## Handling errors
 
-Invalid requests return a non-success HTTP status and a JSON `detail` field identifying the issue. Read the schema for the serving release's limits. A busy server or a calculation exceeding its execution limit also returns an error. The Python client and `curl --fail-with-body` report HTTP failures. For streaming endpoints, inspect every event and require a `final` event before treating the run as complete.
+Invalid requests return a non-success HTTP status and a JSON `detail` field identifying the issue. Read the schema for the serving release's limits. A busy server or a calculation exceeding its execution limit also returns an error. The Python client and `curl --fail-with-body` report HTTP failures. A reverse proxy can also reject a request before it reaches the API; such a response may contain HTML rather than a JSON `detail`. Preserve its HTTP status and message when reporting an access problem. For streaming endpoints, inspect every event and require a `final` event before treating the run as complete.
