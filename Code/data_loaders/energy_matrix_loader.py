@@ -1,6 +1,24 @@
+# (C) Copyright IBM 2021, 2022.
+#
+# This code is licensed under the Apache License, Version 2.0. You may
+# obtain a copy of this license in the LICENSE.txt file in the root directory
+# of this source tree or at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# Any modifications or derivative works of this code must retain this
+# copyright notice, and modified files need to carry a notice indicating
+# that they have been altered from the originals.
+#
+# Modified by the Helix Design Studio contributors: loaders for additional
+# parameter tables, rewritten parsing, symmetrisation and validation, caching
+# and logging. A copy of the license is included in LICENSES/Apache-2.0.txt.
+
+import functools
+import logging
 import numpy as np
 import os
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 def _construct_resource_path(filename: str) -> str:
     """
@@ -19,7 +37,28 @@ def _construct_resource_path(filename: str) -> str:
     return os.path.normpath(path)
 
 
-def _load_energy_matrix_file() -> Tuple[np.ndarray, List[str]]:
+STANDARD_RESIDUES = frozenset("ACDEFGHIKLMNPQRSTVWY")
+
+
+def _validate_labeled_matrix(matrix: np.ndarray, symbols: List[str], name: str) -> None:
+    """
+    Checks that a parameter table is a finite 20x20 matrix labelled once with each
+    of the 20 standard residues, so that callers can index it by residue label.
+    """
+    if len(set(symbols)) != len(symbols):
+        raise ValueError(f"{name} header contains repeated residue labels: {symbols}")
+    if set(symbols) != STANDARD_RESIDUES:
+        raise ValueError(f"{name} header must list the 20 standard residues, got {symbols}")
+    if matrix.shape != (len(symbols), len(symbols)):
+        raise ValueError(
+            f"{name} shape {matrix.shape} does not match its {len(symbols)} header labels"
+        )
+    if not np.isfinite(matrix).all():
+        raise ValueError(f"{name} contains non-finite values")
+
+
+@functools.lru_cache(maxsize=None)
+def _load_energy_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
     """
     Loads the Miyazawa-Jernigan interaction energy matrix from file.
     The file is read as a full 20x20 matrix where the upper triangle
@@ -39,7 +78,7 @@ def _load_energy_matrix_file() -> Tuple[np.ndarray, List[str]]:
 
         # Read the raw 20x20 matrix from file
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        energy_matrix_raw = np.loadtxt(data_lines, dtype=float)
+        energy_matrix_raw = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
         if energy_matrix_raw.shape != (n_aa, n_aa):
              raise ValueError(f"Matrix shape error. Expected ({n_aa}, {n_aa}), but got {energy_matrix_raw.shape}")
@@ -56,18 +95,19 @@ def _load_energy_matrix_file() -> Tuple[np.ndarray, List[str]]:
 
         # -----------------------------
 
-        print(f"✅ Loaded MJ matrix: {n_aa}x{n_aa} with symbols: {symbols}")
-        print(f"   Diagonal values: C={energy_matrix[0,0]:.2f}, M={energy_matrix[1,1]:.2f}, F={energy_matrix[2,2]:.2f}")
-        print(f"   Off-diagonal sample: C-M={energy_matrix[0,1]:.2f}, M-F={energy_matrix[2,1]:.2f}")
+        _validate_labeled_matrix(energy_matrix, symbols, "MJ matrix")
+        logger.debug("Loaded MJ matrix %s with symbols %s", energy_matrix.shape, symbols)
+        energy_matrix.setflags(write=False)
 
-        return energy_matrix, symbols
+        return energy_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading Miyazawa-Jernigan matrix: {e}")
+        raise RuntimeError(f"Error loading Miyazawa-Jernigan matrix: {e}") from e
 
-def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
+@functools.lru_cache(maxsize=None)
+def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
     """
     Loads the helix propensity matrix from file.
     Expected format:
@@ -80,41 +120,23 @@ def _load_first_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
         with open(path, 'r') as f:
             lines = f.readlines()
 
-        # First line contains amino acid symbols
+        # First line contains amino acid symbols; the rest is the square matrix
         symbols = lines[0].strip().split()
-        n_aa = len(symbols)
+        data_lines = [line.strip() for line in lines[1:] if line.strip()]
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
-        # Initialize matrix
-        helix_matrix = np.zeros((n_aa, n_aa))
-
-        # Read full square matrix (starting from line 1)
-        for i, line in enumerate(lines[1:]):
-            if i >= n_aa:
-                break
-            values = line.strip().split()
-            if not values:  # Skip empty lines
-                continue
-
-            # Convert strings to floats
-            values = [float(v) for v in values]
-
-            if len(values) != n_aa:
-                raise ValueError(f"Row {i+1} has {len(values)} values, expected {n_aa}")
-
-            # Fill row i with all values
-            helix_matrix[i, :] = values
-
-        print(f"✅ Loaded Helix Propensity matrix: {n_aa}x{n_aa} with symbols: {symbols}")
-        print(f"   Diagonal values: A-A={helix_matrix[0,0]:.2f}, R-R={helix_matrix[1,1]:.2f}")
-        print(f"   Off-diagonal sample: A-R={helix_matrix[0,1]:.2f}, R-N={helix_matrix[1,2]:.2f}")
-        return helix_matrix, symbols
+        _validate_labeled_matrix(helix_matrix, symbols, "Helix propensity matrix")
+        logger.debug("Loaded helix propensity matrix %s with symbols %s", helix_matrix.shape, symbols)
+        helix_matrix.setflags(write=False)
+        return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix propensity matrix: {e}")
+        raise RuntimeError(f"Error loading helix propensity matrix: {e}") from e
 
-def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
+@functools.lru_cache(maxsize=None)
+def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
     """Returns the helix i,i+3 interaction matrix from file."""
     path = _construct_resource_path("helix_sd_i_3.txt")
 
@@ -127,17 +149,20 @@ def _load_third_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
 
         # The rest of lines contain the matrix data
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        helix_matrix = np.loadtxt(data_lines, dtype=float)
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
-        print(f"✅ Loaded Helix i,i+3 matrix: {helix_matrix.shape} with symbols: {symbols}")
-        return helix_matrix, symbols
+        _validate_labeled_matrix(helix_matrix, symbols, "Helix i,i+3 matrix")
+        logger.debug("Loaded helix i,i+3 matrix %s with symbols %s", helix_matrix.shape, symbols)
+        helix_matrix.setflags(write=False)
+        return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix i,i+3 matrix: {e}")
+        raise RuntimeError(f"Error loading helix i,i+3 matrix: {e}") from e
 
-def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
+@functools.lru_cache(maxsize=None)
+def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, Tuple[str, ...]]:
     """Returns the helix i,i+4 interaction matrix from file."""
     path = _construct_resource_path("helix_sd_i_4.txt")
 
@@ -150,12 +175,14 @@ def _load_fourth_neighbors_matrix_file() -> Tuple[np.ndarray, List[str]]:
 
         # The rest of lines contain the matrix data
         data_lines = [line.strip() for line in lines[1:] if line.strip()]
-        helix_matrix = np.loadtxt(data_lines, dtype=float)
+        helix_matrix = np.loadtxt(data_lines, dtype=float, ndmin=2)
 
-        print(f"✅ Loaded Helix i,i+4 matrix: {helix_matrix.shape} with symbols: {symbols}")
-        return helix_matrix, symbols
+        _validate_labeled_matrix(helix_matrix, symbols, "Helix i,i+4 matrix")
+        logger.debug("Loaded helix i,i+4 matrix %s with symbols %s", helix_matrix.shape, symbols)
+        helix_matrix.setflags(write=False)
+        return helix_matrix, tuple(symbols)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.")
+        raise FileNotFoundError(f"Error: The file {path} was not found. Check the path and filename.") from None
     except Exception as e:
-        raise Exception(f"Error loading helix i,i+4 matrix: {e}")
+        raise RuntimeError(f"Error loading helix i,i+4 matrix: {e}") from e

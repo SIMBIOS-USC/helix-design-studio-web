@@ -5,13 +5,19 @@ import os
 import statistics
 import sys
 import tempfile
+import threading
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional
 
 import numpy as np
 
 def _resolve_code_dir() -> Path:
-    env_override = os.environ.get("QFOLD_CODE_DIR")
+    # QFOLD_CODE_DIR se mantiene como nombre heredado.
+    env_override = os.environ.get("HELIX_CODE_DIR") or os.environ.get("QFOLD_CODE_DIR")
     candidate = (Path(env_override).expanduser().resolve() if env_override
                  else Path(__file__).resolve().parents[1] / "Code")
     if not (candidate / "core" / "hamiltonian_builder.py").is_file():
@@ -23,7 +29,11 @@ CODE_DIR = _resolve_code_dir()
 if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
-from core.hamiltonian_builder import HamiltonianBuilder  # noqa: E402
+from core.hamiltonian_builder import (  # noqa: E402
+    FAUCHERE_PLISKA_HYDROPHOBICITY,
+    HamiltonianBuilder,
+    hydrophobic_moment,
+)
 
 DEFAULT_ALPHABET_16 = ["A", "P", "D", "E", "Q", "L", "M", "F", "K", "S", "T", "W", "Y", "V", "H", "G"]
 DEFAULT_WEIGHTS = {
@@ -34,9 +44,12 @@ DEFAULT_WEIGHTS = {
     "lambda_helix_pairs": 1.5,
     "lambda_electrostatic": 4.0,
 }
-DEFAULT_CACHE_DIR = os.environ.get(
-    "HELIX_CACHE_DIR", str(Path(tempfile.gettempdir()) / "helix-design-studio-cache")
-)
+
+
+def default_cache_dir() -> str:
+    """Se lee en cada llamada para respetar HELIX_CACHE_DIR aunque cambie tras importar."""
+    return os.environ.get("HELIX_CACHE_DIR") or str(Path(tempfile.gettempdir()) / "helix-design-studio-cache")
+
 
 ENVIRONMENT_PRESETS: Dict[str, Dict[str, Any]] = {
     "homogeneous_polar": {
@@ -71,26 +84,20 @@ ENVIRONMENT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-HYDROPHOBICITY_FP = {
-    "D": -0.77, "E": -0.64, "K": -0.99, "R": -1.01, "H": 0.13,
-    "G": 0.00, "A": 0.31, "V": 1.22, "L": 1.70, "I": 1.80,
-    "P": 0.72, "M": 1.23, "F": 1.79, "W": 2.25, "Y": 0.96,
-    "T": -0.04, "S": 0.26, "C": 1.54, "N": -0.60, "Q": -0.22,
-}
+HYDROPHOBICITY_FP = FAUCHERE_PLISKA_HYDROPHOBICITY
 
 RESIDUE_COLORS = {
     "hydrophobic": "#b05a1b",
-    "polar": "#2b8a78",
+    "polar": "#23796a",
     "positive": "#e03131",
     "negative": "#265dcb",
-    "special": "#7a5cfa",
+    "special": "#6c4bf0",
 }
 
 HYDROPHOBIC = {"A", "V", "L", "I", "M", "F", "W", "Y", "C", "P"}
 POLAR = {"Q", "N", "S", "T", "G"}
 POSITIVE = {"K", "R"}
 NEGATIVE = {"D", "E"}
-SPECIAL = {"H", "X"}
 
 THREE_LETTER_CODES = {
     "A": "ALA",
@@ -114,10 +121,6 @@ THREE_LETTER_CODES = {
     "Y": "TYR",
     "V": "VAL",
 }
-
-
-def bits_per_position(n_aa: int) -> int:
-    return max(1, math.ceil(math.log2(n_aa)))
 
 
 def normalize_residues(residues: Optional[List[str] | str]) -> List[str]:
@@ -155,38 +158,41 @@ def resolve_environment(environment: Optional[Dict[str, Any]]) -> Dict[str, Any]
     return base
 
 
-def align_interfacial_environment_to_hydrophobic_moment(
-    sequence: str,
-    environment: Dict[str, Any],
-) -> Dict[str, Any]:
-    descriptor = hydrophobic_moment_descriptor(sequence)
+def is_interfacial(environment: Dict[str, Any]) -> bool:
+    return str(environment.get("preset", "")).startswith("interfacial_")
+
+
+def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
+    """Configuración del Hamiltoniano de búsqueda, que usa una fase fija.
+
+    El nombre del preset y su regla de orientación para el score estándar no
+    distinguen dos Hamiltonianos de búsqueda con el mismo sector y carga.
+    """
+    env = resolve_environment(environment)
+    half_width = float(env["wheel_halfwidth_deg"])
+    if half_width >= 180.0:
+        # Todo el contorno es apolar: el término de carga, que solo actúa en agua, es nulo.
+        return ("all_apolar",)
+    charge = str(env["membrane_charge"])
+    if half_width < 0.0:
+        return ("all_polar", charge)
+    return ("sector", half_width, float(env["wheel_phase_deg"]), charge)
+
+
+def effective_environment(builder: HamiltonianBuilder, codes: List[int], environment: Dict[str, Any]) -> Dict[str, Any]:
+    """Entorno con la fase de rueda realmente usada para puntuar esta secuencia."""
     env = dict(environment)
-    if not str(env.get("preset", "")).startswith("interfacial_"):
-        return env
-
-    if descriptor["magnitude"] < 1e-10:
-        env["phase_aligned_to_hydrophobic_moment"] = False
-        env["hydrophobic_moment_phase_deg"] = 0.0
-        return env
-
-    native_phase_deg = descriptor["phase_deg"]
-    aligned_phase_deg = (-native_phase_deg) % 360.0
-    env["wheel_phase_deg"] = aligned_phase_deg
-    env["phase_aligned_to_hydrophobic_moment"] = True
-    env["hydrophobic_moment_phase_deg"] = native_phase_deg
+    env["wheel_phase_deg"] = builder.phase_for(codes)
+    if builder.align_phase:
+        descriptor = hydrophobic_moment_descriptor(codes_to_seq(codes, builder.amino_acids))
+        env["phase_aligned_to_hydrophobic_moment"] = descriptor["magnitude"] >= 1e-10
+        env["hydrophobic_moment_phase_deg"] = descriptor["phase_deg"]
     return env
 
 
 def hydrophobic_moment_descriptor(sequence: str) -> Dict[str, float]:
-    mx = 0.0
-    my = 0.0
     cleaned = sequence.strip().upper()
-    for idx, aa in enumerate(cleaned, start=1):
-        hydro = HYDROPHOBICITY_FP.get(aa, 0.0)
-        theta_deg = (idx - 1) * 100.0
-        theta = math.radians(theta_deg)
-        mx += hydro * math.cos(theta)
-        my += hydro * math.sin(theta)
+    mx, my = hydrophobic_moment(cleaned)
     magnitude = math.hypot(mx, my)
     phase_deg = math.degrees(math.atan2(my, mx)) if magnitude >= 1e-10 else 0.0
     return {
@@ -222,28 +228,35 @@ def penetration_percent_to_environment(percent: int, interface_preset: str) -> D
     return env
 
 
+MJ_MAX_DISTANCE = 4  # contactos MJ entre i e i+1..i+4
+DESIGN_N_RANDOM = 500
+
+
 def build_builder(
     length: int,
     amino_acids: List[str],
     environment: Dict[str, Any],
     n_decoys: int = 2000,
     zscore_seed: int = 42,
-    stats_cache_dir: str = DEFAULT_CACHE_DIR,
+    stats_cache_dir: Optional[str] = None,
+    oriented: bool = False,
 ) -> HamiltonianBuilder:
-    bpp = bits_per_position(len(amino_acids))
+    """oriented=False: Hamiltoniano de geometría fija (fase del preset), el que optimizan las búsquedas.
+    oriented=True: en interfaces, cada secuencia se orienta con su propio momento hidrofóbico
+    (protocolo de puntuación, aplicado igual a la consulta y a las referencias)."""
     return HamiltonianBuilder(
         L=length,
         amino_acids=amino_acids,
-        bits_per_pos=bpp,
-        n_qubits=length * bpp,
         n_decoys=n_decoys,
         zscore_seed=zscore_seed,
-        stats_cache_dir=stats_cache_dir,
-        membrane_mode="wheel",
+        stats_cache_dir=stats_cache_dir or default_cache_dir(),
+        stats_cache_max_files=int(os.environ.get("HELIX_CACHE_MAX_FILES") or 2000),
         wheel_phase_deg=float(environment["wheel_phase_deg"]),
         wheel_halfwidth_deg=float(environment["wheel_halfwidth_deg"]),
         membrane_charge=str(environment["membrane_charge"]),
-        max_interaction_dist=1,
+        align_phase=oriented and is_interfacial(environment),
+        max_interaction_dist=MJ_MAX_DISTANCE,
+        interrupt_check=_check_limits,
     )
 
 
@@ -259,22 +272,53 @@ def codes_to_seq(codes: List[int], amino_acids: List[str]) -> str:
     return "".join(amino_acids[idx] for idx in codes)
 
 
+class CalculationTimeout(RuntimeError):
+    """El cálculo superó el tiempo máximo asignado a una petición."""
+
+
+class CalculationCancelled(RuntimeError):
+    """El cliente abandonó la petición y el cálculo se detuvo."""
+
+
+@dataclass(frozen=True)
+class CalculationLimits:
+    deadline: Optional[float] = None  # instante límite en time.monotonic()
+    cancelled: Optional[threading.Event] = None
+
+
+# Un ContextVar se copia al hilo del pool que ejecuta el cálculo.
+_calculation_limits: ContextVar[Optional[CalculationLimits]] = ContextVar("calculation_limits", default=None)
+
+
+@contextmanager
+def calculation_limits(limits: Optional[CalculationLimits]) -> Generator[None, None, None]:
+    token = _calculation_limits.set(limits)
+    try:
+        yield
+    finally:
+        _calculation_limits.reset(token)
+
+
+def _check_limits() -> None:
+    limits = _calculation_limits.get()
+    if limits is None:
+        return
+    if limits.cancelled is not None and limits.cancelled.is_set():
+        raise CalculationCancelled("The calculation was cancelled.")
+    if limits.deadline is not None and time.monotonic() > limits.deadline:
+        raise CalculationTimeout("The calculation exceeded the time limit of the web server.")
+
+
 def compute_breakdown(builder: HamiltonianBuilder, codes: List[int], weights: Dict[str, float]) -> Dict[str, float]:
-    raw = {
-        "local": builder._raw_helix_local(codes),
-        "env": builder._raw_env_pol(codes),
-        "charge": builder._raw_env_chg(codes),
-        "pairwise": builder._raw_pw_int(codes),
-        "electrostatic": builder._raw_electrostatic(codes),
-        "neigh": builder._raw_helix_neigh(codes),
-    }
+    _check_limits()
+    raw = builder.raw_terms(codes)
     z = {
-        "local": builder._apply_z_score("helix_local", raw["local"]),
-        "env": builder._apply_z_score("env_pol", raw["env"]),
-        "charge": builder._apply_z_score("env_chg", raw["charge"]),
-        "pairwise": builder._apply_z_score("pw_int", raw["pairwise"]),
+        "local": builder._apply_z_score("helix_local", raw["helix_local"]),
+        "env": builder._apply_z_score("env_pol", raw["env_pol"]),
+        "charge": builder._apply_z_score("env_chg", raw["env_chg"]),
+        "pairwise": builder._apply_z_score("pw_int", raw["pw_int"]),
         "electrostatic": builder._apply_z_score("electrostatic", raw["electrostatic"]),
-        "neigh": builder._apply_z_score("helix_neigh", raw["neigh"]),
+        "neigh": builder._apply_z_score("helix_neigh", raw["helix_neigh"]),
     }
     weighted = {
         "local": weights["lambda_local"] * z["local"],
@@ -330,9 +374,21 @@ def model_net_charge(sequence: str) -> int:
     return int(sum(charge_map.get(aa, 0) for aa in sequence))
 
 
-def neutral_ph_net_charge(sequence: str) -> int:
-    charge_map = {"R": 1, "K": 1, "D": -1, "E": -1}
-    return int(sum(charge_map.get(aa, 0) for aa in sequence))
+# Flujos aleatorios independientes derivados de la semilla del usuario (SeedSequence): la
+# calibración usa la semilla tal cual; referencias y búsquedas usan subflujos distintos.
+REFERENCE_STREAM = 1
+SEARCH_STREAM = 2
+
+
+SEED_PROTOCOL = (
+    "numpy.random.default_rng with SeedSequence entropy: calibration decoys [seed]; "
+    "random reference [seed, 1]; search [seed, 2] for single searches and [seed, 2, i] "
+    "for the i-th run of family and specificity searches"
+)
+
+
+def rng_seed(seed: int, stream: int, *index: int) -> List[int]:
+    return [int(seed), stream, *index]
 
 
 def random_reference(
@@ -340,7 +396,7 @@ def random_reference(
     amino_acids: List[str],
     weights: Dict[str, float],
     n_random: int,
-    seed: int,
+    seed: int | List[int],
 ) -> Dict[str, float]:
     rng = np.random.default_rng(seed)
     energies = []
@@ -349,7 +405,7 @@ def random_reference(
         energies.append(compute_breakdown(builder, codes, weights)["total"])
     mean = statistics.fmean(energies)
     std = statistics.pstdev(energies) or 1.0
-    return {"mean": float(mean), "std": float(std), "energies": energies}
+    return {"mean": float(mean), "std": float(std), "energies": energies, "seed_entropy": seed}
 
 
 def score_sequence_with_builder(
@@ -363,6 +419,7 @@ def score_sequence_with_builder(
 ) -> Dict[str, Any]:
     sequence = sequence.strip().upper()
     codes = seq_to_codes(sequence, amino_acids)
+    environment = effective_environment(builder, codes, environment)
     breakdown = compute_breakdown(builder, codes, weights)
     mu_descriptor = hydrophobic_moment_descriptor(sequence)
     energy = breakdown["total"]
@@ -376,7 +433,15 @@ def score_sequence_with_builder(
         "energy": energy,
         "z_score": float(z_score),
         "percentile_lower_is_better": float(percentile),
-        "random_reference": {"mean": ref["mean"], "std": ref["std"], "n": n_random},
+        "random_reference": {
+            "mean": ref["mean"], "std": ref["std"], "n": n_random, "seed_entropy": ref.get("seed_entropy"),
+        },
+        "calibration": {
+            "n_decoys": int(builder.kwargs.get("n_decoys", 0)),
+            "seed_entropy": int(builder.kwargs.get("zscore_seed", 0)),
+            "orientation": "own hydrophobic moment" if builder.align_phase else "fixed wheel phase",
+            "terms": {term: {"mu": mu, "sigma": sigma} for term, (mu, sigma) in builder.stats.items()},
+        },
         "breakdown": breakdown,
         "observables": {
             "abs_mu_h": mu_descriptor["magnitude"],
@@ -385,9 +450,81 @@ def score_sequence_with_builder(
         },
         "wheel": wheel_data(sequence, environment),
         "model_net_charge": model_net_charge(sequence),
-        "neutral_ph_net_charge": neutral_ph_net_charge(sequence),
         "alphabet": amino_acids,
     }
+
+
+@dataclass
+class ScoringModel:
+    """Builder calibrado y referencia aleatoria para un entorno y una regla de orientación."""
+    builder: HamiltonianBuilder
+    environment: Dict[str, Any]
+    reference: Dict[str, Any]
+    n_random: int
+
+
+def scoring_model(
+    length: int,
+    amino_acids: List[str],
+    environment: Dict[str, Any],
+    weights: Dict[str, float],
+    *,
+    n_decoys: int,
+    seed: int,
+    n_random: int,
+    oriented: bool,
+) -> ScoringModel:
+    builder = build_builder(length, amino_acids, environment, n_decoys=n_decoys, zscore_seed=seed, oriented=oriented)
+    reference = random_reference(builder, amino_acids, weights, n_random=n_random, seed=rng_seed(seed, REFERENCE_STREAM))
+    return ScoringModel(builder, environment, reference, n_random)
+
+
+def report_models(
+    length: int,
+    amino_acids: List[str],
+    environment: Dict[str, Any],
+    weights: Dict[str, float],
+    *,
+    n_decoys: int,
+    seed: int,
+    n_random: int,
+) -> tuple[ScoringModel, ScoringModel]:
+    """(modelo de diseño con geometría fija, modelo de puntuación orientado); coinciden fuera de interfaces."""
+    design = scoring_model(length, amino_acids, environment, weights,
+                           n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=False)
+    if not is_interfacial(environment):
+        return design, design
+    scoring = scoring_model(length, amino_acids, environment, weights,
+                            n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
+    return design, scoring
+
+
+def score_with_model(sequence: str, model: ScoringModel, amino_acids: List[str], weights: Dict[str, float]) -> Dict[str, Any]:
+    return score_sequence_with_builder(
+        sequence, model.builder, model.environment, amino_acids, weights, model.reference, model.n_random
+    )
+
+
+def report_sequence(
+    sequence: str,
+    design: ScoringModel,
+    scoring: ScoringModel,
+    amino_acids: List[str],
+    weights: Dict[str, float],
+) -> Dict[str, Any]:
+    """Puntuación estándar (mismo protocolo que Score) más la energía en la geometría de diseño,
+    que es la magnitud que optimizó la búsqueda."""
+    report = score_with_model(sequence, scoring, amino_acids, weights)
+    in_design = report if design is scoring else score_with_model(sequence, design, amino_acids, weights)
+    report["design_geometry"] = {
+        "energy": in_design["energy"],
+        "z_score": in_design["z_score"],
+        "percentile_lower_is_better": in_design["percentile_lower_is_better"],
+        "breakdown": in_design["breakdown"],
+        "wheel_phase_deg": in_design["environment"]["wheel_phase_deg"],
+        "orientation": "fixed wheel phase",
+    }
+    return report
 
 
 def hamming_distance_codes(a: List[int], b: List[int]) -> int:
@@ -422,30 +559,11 @@ def score_sequence(
 ) -> Dict[str, Any]:
     sequence = sequence.strip().upper()
     amino_acids = normalize_residues(residues)
-    env = resolve_environment(environment)
-    env = align_interfacial_environment_to_hydrophobic_moment(sequence, env)
-    w = normalize_weights(weights)
-    builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
-    return score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
-
-
-def score_sequence_fixed_environment(
-    sequence: str,
-    environment: Optional[Dict[str, Any]] = None,
-    residues: Optional[List[str] | str] = None,
-    weights: Optional[Dict[str, float]] = None,
-    n_decoys: int = 2000,
-    n_random: int = 500,
-    seed: int = 42,
-) -> Dict[str, Any]:
-    sequence = sequence.strip().upper()
-    amino_acids = normalize_residues(residues)
+    seq_to_codes(sequence, amino_acids)  # valida antes de calibrar
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(len(sequence), amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
-    return score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
+    model = scoring_model(len(sequence), amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
+    return score_with_model(sequence, model, amino_acids, w)
 
 
 def simulated_annealing(
@@ -454,8 +572,8 @@ def simulated_annealing(
     weights: Dict[str, float],
     steps: int,
     restarts: int,
-    seed: int,
-    objective_fn: Optional[Callable[[List[int]], float]] = None,
+    seed: int | List[int],
+    penalty_fn: Optional[Callable[[List[int]], float]] = None,
 ) -> Dict[str, Any]:
     rng = np.random.default_rng(seed)
     n_aa = len(amino_acids)
@@ -466,7 +584,7 @@ def simulated_annealing(
     for _ in range(restarts):
         current = rng.integers(0, n_aa, size=builder.L).tolist()
         current_energy = compute_breakdown(builder, current, weights)["total"]
-        current_objective = objective_fn(current) if objective_fn else current_energy
+        current_objective = current_energy + penalty_fn(current) if penalty_fn else current_energy
         local_best = list(current)
         local_best_energy = current_energy
         local_best_objective = current_objective
@@ -482,7 +600,7 @@ def simulated_annealing(
             proposal[pos] = new_code
 
             proposal_energy = compute_breakdown(builder, proposal, weights)["total"]
-            proposal_objective = objective_fn(proposal) if objective_fn else proposal_energy
+            proposal_objective = proposal_energy + penalty_fn(proposal) if penalty_fn else proposal_energy
             delta = proposal_objective - current_objective
             if delta <= 0 or rng.random() < math.exp(-delta / temperature):
                 current = proposal
@@ -517,7 +635,7 @@ def _iter_specificity_search(
     lambda_balance: float,
     steps: int,
     restarts: int,
-    seed: int,
+    seed: int | List[int],
     accepted_codes: Optional[List[List[int]]] = None,
     min_distance: int = 0,
     penalty_weight: float = 0.0,
@@ -643,40 +761,7 @@ def _iter_specificity_search(
     }
 
 
-def _run_specificity_search(
-    target_builder: HamiltonianBuilder,
-    off_builders: List[HamiltonianBuilder],
-    amino_acids: List[str],
-    weights: Dict[str, float],
-    lambda_balance: float,
-    steps: int,
-    restarts: int,
-    seed: int,
-    accepted_codes: Optional[List[List[int]]] = None,
-    min_distance: int = 0,
-    penalty_weight: float = 0.0,
-    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-) -> Dict[str, Any]:
-    final_payload: Optional[Dict[str, Any]] = None
-    for update in _iter_specificity_search(
-        target_builder=target_builder,
-        off_builders=off_builders,
-        amino_acids=amino_acids,
-        weights=weights,
-        lambda_balance=lambda_balance,
-        steps=steps,
-        restarts=restarts,
-        seed=seed,
-        accepted_codes=accepted_codes,
-        min_distance=min_distance,
-        penalty_weight=penalty_weight,
-        progress_callback=progress_callback,
-    ):
-        if update["type"] == "result":
-            final_payload = update["payload"]
-    if final_payload is None:
-        raise RuntimeError("Specificity search did not produce a result")
-    return final_payload
+SPECIFICITY_N_RANDOM = 3000
 
 
 def _build_specificity_candidate_payload(
@@ -686,41 +771,26 @@ def _build_specificity_candidate_payload(
     amino_acids: List[str],
     target_env: Dict[str, Any],
     off_target_envs: List[Dict[str, Any]],
+    target_models: tuple[ScoringModel, ScoringModel],
+    off_models: List[tuple[ScoringModel, ScoringModel]],
     weights: Dict[str, float],
     lambda_balance: float,
     steps: int,
     restarts: int,
     seed: int,
+    attempt: int,
     objective: float,
     best_target_energy: float,
     best_off_energies: List[float],
 ) -> Dict[str, Any]:
-    n_decoys_eval = 3000
-    n_random = 3000
-    target_score = score_sequence(
-        sequence,
-        target_env,
-        amino_acids,
-        weights,
-        n_decoys=n_decoys_eval,
-        n_random=n_random,
-        seed=seed + 1001,
-    )
-    off_target_scores = []
-    for idx, env in enumerate(off_target_envs):
-        off_target_scores.append(
-            score_sequence(
-                sequence,
-                env,
-                amino_acids,
-                weights,
-                n_decoys=n_decoys_eval,
-                n_random=n_random,
-                seed=seed + 1101 + idx,
-            )
-        )
-
-    worst_off_target = min(off_target_scores, key=lambda item: item["energy"])
+    # Márgenes en la geometría de diseño (la del objetivo optimizado); cada entorno incluye además
+    # su puntuación estándar (mismo protocolo que Score).
+    target_score = report_sequence(sequence, *target_models, amino_acids, weights)
+    off_target_scores = [report_sequence(sequence, *models, amino_acids, weights) for models in off_models]
+    target_design = target_score["design_geometry"]
+    off_design = [item["design_geometry"] for item in off_target_scores]
+    worst_index = min(range(len(off_design)), key=lambda idx: off_design[idx]["energy"])
+    worst_off_target = off_target_scores[worst_index]
     specificity_design = {
         "objective": objective,
         "objective_formula": "H_target + (lambda - 1) * min(H_offtargets)",
@@ -729,11 +799,13 @@ def _build_specificity_candidate_payload(
         "target_preset": target_env["preset"],
         "off_target_presets": [env["preset"] for env in off_target_envs],
         "worst_off_target_preset": worst_off_target["environment"]["preset"],
-        "energy_margin": worst_off_target["energy"] - target_score["energy"],
-        "z_score_margin": worst_off_target["z_score"] - target_score["z_score"],
+        "energy_margin": off_design[worst_index]["energy"] - target_design["energy"],
+        "z_score_margin": min(item["z_score"] for item in off_design) - target_design["z_score"],
+        "margins_geometry": "design (fixed wheel phase)",
         "steps": steps,
         "restarts": restarts,
         "seed": seed,
+        "attempt": attempt,
         "best_target_energy": best_target_energy,
         "best_off_target_energy": min(best_off_energies) if best_off_energies else None,
     }
@@ -760,10 +832,11 @@ def design_sequence(
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    ref = random_reference(builder, amino_acids, w, n_random=500, seed=seed + 17)
-    result = simulated_annealing(builder, amino_acids, w, steps=steps, restarts=restarts, seed=seed)
-    score = score_sequence_with_builder(result["sequence"], builder, env, amino_acids, w, ref, 500)
+    design, scoring = report_models(length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    result = simulated_annealing(
+        design.builder, amino_acids, w, steps=steps, restarts=restarts, seed=rng_seed(seed, SEARCH_STREAM)
+    )
+    score = report_sequence(result["sequence"], design, scoring, amino_acids, w)
     score["design_settings"] = {"steps": steps, "restarts": restarts, "seed": seed}
     return score
 
@@ -815,9 +888,8 @@ def design_family_stream(
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
     w = normalize_weights(weights)
-    builder = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
-    n_random = 500
-    ref = random_reference(builder, amino_acids, w, n_random=n_random, seed=seed + 17)
+    design, scoring = report_models(length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    builder = design.builder
 
     unique_results: Dict[str, Dict[str, Any]] = {}
     accepted_codes: List[List[int]] = []
@@ -836,11 +908,10 @@ def design_family_stream(
     }
 
     for run_idx in range(total_runs):
-        objective_fn = None
+        penalty_fn = None
         if accepted_codes:
-            objective_fn = lambda codes, prior=accepted_codes: (
-                compute_breakdown(builder, codes, w)["total"]
-                + diversity_penalty(codes, prior, min_distance=min_distance, penalty_weight=penalty_weight)
+            penalty_fn = lambda codes, prior=list(accepted_codes): diversity_penalty(
+                codes, prior, min_distance=min_distance, penalty_weight=penalty_weight
             )
         candidate = simulated_annealing(
             builder,
@@ -848,8 +919,8 @@ def design_family_stream(
             w,
             steps=steps,
             restarts=restarts,
-            seed=seed + run_idx,
-            objective_fn=objective_fn,
+            seed=rng_seed(seed, SEARCH_STREAM, run_idx),
+            penalty_fn=penalty_fn,
         )
         sequence = candidate["sequence"]
         yield {
@@ -863,7 +934,7 @@ def design_family_stream(
         }
         if sequence in unique_results:
             continue
-        scored = score_sequence_with_builder(sequence, builder, env, amino_acids, w, ref, n_random)
+        scored = report_sequence(sequence, design, scoring, amino_acids, w)
         min_hamming = None
         if accepted_codes:
             min_hamming = min(hamming_distance_codes(candidate["codes"], prior) for prior in accepted_codes)
@@ -882,7 +953,8 @@ def design_family_stream(
         if len(unique_results) >= family_size:
             break
 
-    ranked = sorted(unique_results.values(), key=lambda item: item["energy"])[:family_size]
+    # Orden por la magnitud optimizada (energía en la geometría de diseño).
+    ranked = sorted(unique_results.values(), key=lambda item: item["design_geometry"]["energy"])[:family_size]
     payload = {
         "environment": env,
         "weights": w,
@@ -921,37 +993,7 @@ def compare_environments(
     env_a = resolve_environment(environment_a)
     env_b = resolve_environment(environment_b)
     scored_a = score_sequence(sequence, env_a, amino_acids, w, n_decoys=n_decoys, seed=seed)
-    scored_b = score_sequence(sequence, env_b, amino_acids, w, n_decoys=n_decoys, seed=seed + 1)
-    return {
-        "sequence": sequence.upper(),
-        "environment_a": scored_a,
-        "environment_b": scored_b,
-        "energy_gap": abs(scored_a["energy"] - scored_b["energy"]),
-        "z_score_gap": abs(scored_a["z_score"] - scored_b["z_score"]),
-        "joint_energy": scored_a["energy"] + scored_b["energy"],
-    }
-
-
-def compare_environments_fixed(
-    sequence: str,
-    environment_a: Dict[str, Any],
-    environment_b: Dict[str, Any],
-    residues: Optional[List[str] | str] = None,
-    weights: Optional[Dict[str, float]] = None,
-    n_decoys: int = 2000,
-    n_random: int = 500,
-    seed: int = 42,
-) -> Dict[str, Any]:
-    amino_acids = normalize_residues(residues)
-    w = normalize_weights(weights)
-    env_a = resolve_environment(environment_a)
-    env_b = resolve_environment(environment_b)
-    builder_a = build_builder(len(sequence), amino_acids, env_a, n_decoys=n_decoys, zscore_seed=seed)
-    builder_b = build_builder(len(sequence), amino_acids, env_b, n_decoys=n_decoys, zscore_seed=seed + 1)
-    ref_a = random_reference(builder_a, amino_acids, w, n_random=n_random, seed=seed + 17)
-    ref_b = random_reference(builder_b, amino_acids, w, n_random=n_random, seed=seed + 18)
-    scored_a = score_sequence_with_builder(sequence, builder_a, env_a, amino_acids, w, ref_a, n_random)
-    scored_b = score_sequence_with_builder(sequence, builder_b, env_b, amino_acids, w, ref_b, n_random)
+    scored_b = score_sequence(sequence, env_b, amino_acids, w, n_decoys=n_decoys, seed=seed)
     return {
         "sequence": sequence.upper(),
         "environment_a": scored_a,
@@ -988,7 +1030,7 @@ def optimize_penetration(
     best_result: Optional[Dict[str, Any]] = None
     best_percent: Optional[int] = None
 
-    for idx, percent in enumerate(range(percent_min, percent_max + 1, percent_step)):
+    for percent in range(percent_min, percent_max + 1, percent_step):
         env = penetration_percent_to_environment(percent, str(env_base["preset"]))
         scored = score_sequence(
             sequence=sequence,
@@ -997,7 +1039,7 @@ def optimize_penetration(
             weights=w,
             n_decoys=n_decoys,
             n_random=n_random,
-            seed=seed + idx,
+            seed=seed,
         )
         profile.append(
             {
@@ -1049,9 +1091,10 @@ def cross_environment_design(
     w = normalize_weights(weights)
     env_a = resolve_environment(environment_a)
     env_b = resolve_environment(environment_b)
-    builder_a = build_builder(length, amino_acids, env_a, n_decoys=n_decoys, zscore_seed=seed)
-    builder_b = build_builder(length, amino_acids, env_b, n_decoys=n_decoys, zscore_seed=seed)
-    rng = np.random.default_rng(seed)
+    design_a, scoring_a = report_models(length, amino_acids, env_a, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    design_b, scoring_b = report_models(length, amino_acids, env_b, w, n_decoys=n_decoys, seed=seed, n_random=DESIGN_N_RANDOM)
+    builder_a, builder_b = design_a.builder, design_b.builder
+    rng = np.random.default_rng(rng_seed(seed, SEARCH_STREAM))
     n_aa = len(amino_acids)
     best_codes = None
     best_obj = float("inf")
@@ -1100,16 +1143,17 @@ def cross_environment_design(
 
     assert best_codes is not None
     sequence = codes_to_seq(best_codes, amino_acids)
-    comparison = compare_environments_fixed(
-        sequence,
-        env_a,
-        env_b,
-        amino_acids,
-        w,
-        n_decoys=n_decoys,
-        n_random=500,
-        seed=seed,
-    )
+    # Puntuación estándar (como en Compare) y energía en la geometría de diseño que optimizó la búsqueda.
+    scored_a = report_sequence(sequence, design_a, scoring_a, amino_acids, w)
+    scored_b = report_sequence(sequence, design_b, scoring_b, amino_acids, w)
+    comparison = {
+        "sequence": sequence,
+        "environment_a": scored_a,
+        "environment_b": scored_b,
+        "energy_gap": abs(scored_a["energy"] - scored_b["energy"]),
+        "z_score_gap": abs(scored_a["z_score"] - scored_b["z_score"]),
+        "joint_energy": scored_a["energy"] + scored_b["energy"],
+    }
     comparison["cross_design"] = {
         "lambda_gap": lambda_gap,
         "objective": best_obj,
@@ -1173,27 +1217,15 @@ def design_specificity_stream(
     w = normalize_weights(weights)
     target_env = resolve_environment(target_environment)
     off_target_envs = [resolve_environment(env) for env in off_target_environments]
+    # Se descartan off-targets físicamente idénticos entre sí o al objetivo (mismo Hamiltoniano).
+    seen: set[tuple[Any, ...]] = {physical_environment_key(target_env)}
     unique_off_targets: List[Dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
     for env in off_target_envs:
-        key = (
-            env.get("preset"),
-            env.get("wheel_phase_deg"),
-            env.get("wheel_halfwidth_deg"),
-            env.get("membrane_charge"),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_off_targets.append(env)
-    off_target_envs = [
-        env for env in unique_off_targets
-        if (
-            env.get("preset") != target_env.get("preset")
-            or float(env.get("wheel_halfwidth_deg", 0.0)) != float(target_env.get("wheel_halfwidth_deg", 0.0))
-            or str(env.get("membrane_charge")) != str(target_env.get("membrane_charge"))
-        )
-    ]
+        key = physical_environment_key(env)
+        if key not in seen:
+            seen.add(key)
+            unique_off_targets.append(env)
+    off_target_envs = unique_off_targets
     if not off_target_envs:
         raise ValueError("Please provide at least one off-target environment different from the target.")
 
@@ -1202,6 +1234,8 @@ def design_specificity_stream(
         raise ValueError("lambda_balance must lie between 0 and 1.")
     num_sequences = max(1, int(num_sequences))
     total_restart_budget = max(1, int(restarts))
+    if num_sequences > total_restart_budget:
+        raise ValueError("num_sequences cannot exceed restarts: each candidate needs at least one restart.")
     restarts_per_attempt = max(1, total_restart_budget // num_sequences)
     total_attempts = max(1, total_restart_budget // restarts_per_attempt)
 
@@ -1223,10 +1257,14 @@ def design_specificity_stream(
     }
 
     builder_specs = [("target", target_env)] + [(f"off_target_{idx + 1}", env) for idx, env in enumerate(off_target_envs)]
+    models: Dict[str, tuple[ScoringModel, ScoringModel]] = {}
     built: Dict[str, HamiltonianBuilder] = {}
     total_builders = len(builder_specs)
     for idx, (label, env) in enumerate(builder_specs, start=1):
-        built[label] = build_builder(length, amino_acids, env, n_decoys=n_decoys, zscore_seed=seed)
+        models[label] = report_models(
+            length, amino_acids, env, w, n_decoys=n_decoys, seed=seed, n_random=SPECIFICITY_N_RANDOM
+        )
+        built[label] = models[label][0].builder
         yield {
             "type": "phase",
             "payload": {
@@ -1267,7 +1305,7 @@ def design_specificity_stream(
             lambda_balance=lambda_balance,
             steps=steps,
             restarts=restarts_per_attempt,
-            seed=seed + attempt_idx,
+            seed=rng_seed(seed, SEARCH_STREAM, attempt_idx),
             accepted_codes=accepted_codes,
             min_distance=min_distance,
             penalty_weight=penalty_weight,
@@ -1304,11 +1342,14 @@ def design_specificity_stream(
             amino_acids=amino_acids,
             target_env=target_env,
             off_target_envs=off_target_envs,
+            target_models=models["target"],
+            off_models=[models[f"off_target_{idx + 1}"] for idx in range(len(off_target_envs))],
             weights=w,
             lambda_balance=lambda_balance,
             steps=steps,
             restarts=restarts_per_attempt,
-            seed=seed + attempt_idx,
+            seed=seed,
+            attempt=attempt_idx + 1,
             objective=result["objective"],
             best_target_energy=result["best_target_energy"],
             best_off_energies=result["best_off_energies"],
@@ -1335,7 +1376,7 @@ def design_specificity_stream(
         key=lambda item: (
             round(float(item["specificity_design"]["objective"]), 8),
             -float(item["specificity_design"]["z_score_margin"]),
-            float(item["target_environment"]["z_score"]),
+            float(item["target_environment"]["design_geometry"]["z_score"]),
             item["sequence"],
         ),
     )

@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Helix Design Studio</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script src="/static/3Dmol-min.js" defer></script>
+    <link rel="icon" href="/static/assets/simbios-logo.png" />
+    <link rel="stylesheet" href="/static/styles.css?v=2" />
+    <script src="/static/3Dmol-min.js?v=2.4.2" defer></script>
   </head>
   <body>
     <div class="grain"></div>
@@ -108,7 +109,7 @@
             </details>
             <details class="guide-card">
               <summary>What environments mean</summary>
-              <p><strong>Homogeneous polar</strong> approximates a water-like medium. <strong>Homogeneous apolar</strong> approximates a non-polar medium. <strong>Interfacial</strong> modes impose a membrane-facing and water-facing sector on the helical wheel, plus an anionic, neutral or cationic membrane surface charge. In the app, <strong>penetration depth</strong> is shown as a percentage, so it acts as an operational proxy for how much of the helix is exposed to the non-polar side of the interface.</p>
+              <p><strong>Homogeneous polar</strong> approximates a water-like medium. <strong>Homogeneous apolar</strong> approximates a non-polar medium. <strong>Interfacial</strong> modes impose a membrane-facing and water-facing sector on the helical wheel, plus an anionic, neutral or cationic membrane surface charge. In the app, <strong>penetration depth</strong> is a percentage with the same meaning in every panel: 0% is the homogeneous polar medium, 100% the homogeneous apolar medium, and intermediate values use the interfacial preset with an apolar sector half-width of 40° + 1.1° per percent. It is an angular exposure setting, not a physical insertion depth. Searches optimize the model with the fixed wheel geometry of the preset; the standard score orients each sequence, and the random reference sequences, by its own hydrophobic moment. Design results show both values.</p>
             </details>
             <details class="guide-card">
               <summary>What λgap means</summary>
@@ -139,14 +140,8 @@
             <label>Reference peptide
               <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="score">
                 <option value="">Custom sequence</option>
-                <option value="ll37">LL-37</option>
-                <option value="melittin">Melittin</option>
-                <option value="magainin2">Magainin 2</option>
-                <option value="cecropin_a">Cecropin A</option>
-                <option value="pgla">PGLa</option>
-                <option value="walp23">WALP23</option>
               </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
             </label>
             <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
             <div class="reference-note hidden-field" data-reference-note="score"></div>
@@ -164,7 +159,7 @@
             </label>
             <label class="penetration-field" data-penetration-field="score">Penetration depth
               <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="score" />
-              <span class="field-hint">Operational proxy for how much of the helix is exposed to the non-polar side of the interface. Current value: <strong data-range-value="score">50%</strong>.</span>
+              <span class="field-hint">Current value: <strong data-range-value="score">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <div class="actions"><button type="submit">Score sequence</button></div>
           </form>
@@ -180,14 +175,8 @@
             <label>Reference peptide
               <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="penetration">
                 <option value="">Custom sequence</option>
-                <option value="ll37">LL-37</option>
-                <option value="melittin">Melittin</option>
-                <option value="magainin2">Magainin 2</option>
-                <option value="cecropin_a">Cecropin A</option>
-                <option value="pgla">PGLa</option>
-                <option value="walp23">WALP23</option>
               </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
             </label>
             <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
             <div class="reference-note hidden-field" data-reference-note="penetration"></div>
@@ -234,7 +223,7 @@
             </label>
             <label class="penetration-field" data-penetration-field="design">Penetration depth
               <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="design" />
-              <span class="field-hint">Current value: <strong data-range-value="design">50%</strong>. Higher percentages correspond to stronger exposure to the non-polar side of the interface.</span>
+              <span class="field-hint">Current value: <strong data-range-value="design">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <label>Restarts
               <input name="restarts" type="number" value="8" min="1" max="20" />
@@ -270,7 +259,7 @@
             </label>
             <label class="penetration-field" data-penetration-field="family">Penetration depth
               <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="family" />
-              <span class="field-hint">Current value: <strong data-range-value="family">50%</strong>. Used only for interfacial families and interpreted as non-polar exposure percentage.</span>
+              <span class="field-hint">Current value: <strong data-range-value="family">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <label>Optimization steps (classical simulated annealing)
               <input name="steps" type="number" value="10000" min="1000" max="20000" step="1000" />
@@ -295,18 +284,12 @@
             <label>Reference peptide
               <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="compare">
                 <option value="">Custom sequence</option>
-                <option value="ll37">LL-37</option>
-                <option value="melittin">Melittin</option>
-                <option value="magainin2">Magainin 2</option>
-                <option value="cecropin_a">Cecropin A</option>
-                <option value="pgla">PGLa</option>
-                <option value="walp23">WALP23</option>
               </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the residue background stays at the default alphabet unless you edit it.</span>
+              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
             </label>
             <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
             <div class="reference-note hidden-field" data-reference-note="compare"></div>
-            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
+            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
             <div></div>
             <label>Environment A<select name="preset_a" class="env-preset" data-env-scope="compare_a">
               <option value="homogeneous_polar" selected>Homogeneous polar</option>
@@ -324,11 +307,11 @@
             </select></label>
             <label class="penetration-field" data-penetration-field="compare_a">Penetration depth A
               <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_a" />
-              <span class="field-hint">Current value: <strong data-range-value="compare_a">50%</strong>. Used only if environment A is interfacial.</span>
+              <span class="field-hint">Current value: <strong data-range-value="compare_a">50%</strong>. Used only if environment A is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <label class="penetration-field" data-penetration-field="compare_b">Penetration depth B
               <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_b" />
-              <span class="field-hint">Current value: <strong data-range-value="compare_b">50%</strong>. Used only if environment B is interfacial.</span>
+              <span class="field-hint">Current value: <strong data-range-value="compare_b">50%</strong>. Used only if environment B is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <div class="actions"><button type="submit">Compare environments</button></div>
           </form>
@@ -362,11 +345,11 @@
             </select></label>
             <label class="penetration-field" data-penetration-field="cross_a">Penetration depth A
               <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_a" />
-              <span class="field-hint">Current value: <strong data-range-value="cross_a">50%</strong>. Used only if environment A is interfacial.</span>
+              <span class="field-hint">Current value: <strong data-range-value="cross_a">50%</strong>. Used only if environment A is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <label class="penetration-field" data-penetration-field="cross_b">Penetration depth B
               <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_b" />
-              <span class="field-hint">Current value: <strong data-range-value="cross_b">50%</strong>. Used only if environment B is interfacial.</span>
+              <span class="field-hint">Current value: <strong data-range-value="cross_b">50%</strong>. Used only if environment B is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <label>Optimization steps (classical simulated annealing)
               <input name="steps" type="number" value="16000" min="1000" max="60000" step="1000" />
@@ -406,7 +389,7 @@
             </select></label>
             <label class="penetration-field" data-penetration-field="specificity_shared">Penetration depth
               <input type="range" name="penetration_depth" min="0" max="100" step="5" value="25" class="penetration-slider" data-range-output="specificity_shared" />
-              <span class="field-hint">Current value: <strong data-range-value="specificity_shared">25%</strong>. Used as the common penetration depth for all interfacial target and off-target environments in this design.</span>
+              <span class="field-hint">Current value: <strong data-range-value="specificity_shared">25%</strong>. Used as the common penetration depth for all interfacial target and off-target environments in this design. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
             </label>
             <fieldset class="selector-group">
               <legend>Competing off-target environments</legend>
@@ -462,11 +445,12 @@
           <span class="visit-counter" id="visit-counter-total">Visits: —</span>
           <span class="visit-counter" id="visit-counter-unique">Unique visitors: —</span>
           <span class="visit-counter" id="visit-counter-runs">Runs: —</span>
+          <span class="visit-counter">Anonymous usage statistics are collected; a random identifier is stored in this browser.</span>
         </div>
       </div>
     </footer>
 
-    <template id="loading-template"><div class="loading">Computing with the project Hamiltonian…</div></template>
-    <script src="/static/app.js"></script>
+    <template id="loading-template"><div class="loading" role="status">Computing with the project Hamiltonian… </div></template>
+    <script src="/static/app.js?v=2"></script>
   </body>
 </html>
