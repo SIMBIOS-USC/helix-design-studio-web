@@ -1,0 +1,7 @@
+{
+  "sequence": "GIGKFLHSAKKFGKAFVGEIMNS",
+  "environment_a": {"preset": "interfacial_neg"},
+  "environment_b": {"preset": "homogeneous_polar"},
+  "n_decoys": 100,
+  "seed": 42
+}

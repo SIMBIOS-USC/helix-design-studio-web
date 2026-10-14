@@ -1,6 +1,13 @@
 # Changelog
 
-Use `v0.1.0` for the original comparison baseline, `v1.0.0rc1` for the previous candidate, and `v1.0.0rc2` for the current source-corrected candidate. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+Use `v0.1.0` for the original comparison baseline, `v1.0.0rc1` for the previous candidate, and `v1.0.0rc2` for the source-corrected parameter set, and `v1.0.0rc3` for the current documented distribution. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+
+## 1.0.0rc3 — 2026-10-14
+
+- Added a user-oriented API guide covering the computational endpoints, score interpretation, provenance, orientation and errors.
+- Added executable JSON requests for Design, Compare and Penetration alongside the existing Score example, plus a standard-library Python client. All four examples were executed against the local API.
+- Linked Swagger, ReDoc, the OpenAPI schema and the API guide from the browser Guide and README.
+- Scoring equations, numerical parameters and search algorithms are unchanged from 1.0.0rc2. The release version in responses identifies this documented source revision.
 
 ## 1.0.0rc2 — 2026-10-14
 

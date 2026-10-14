@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface and FastAPI API support sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Current version: 1.0.0rc2**, a release candidate for evaluation. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
+**Current version: 1.0.0rc3**, a release candidate for evaluation. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
 
 ## Installation
 
@@ -13,7 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
-git checkout v1.0.0rc2
+git checkout v1.0.0rc3
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -22,7 +22,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-Open **http://127.0.0.1:8000**. The interface includes a Guide and examples. API documentation is at `/docs`; the schema is at `/openapi.json`. The first calculation for a calibration configuration samples random sequences and caches the component statistics for subsequent requests.
+Open **http://127.0.0.1:8000**. The interface includes a Guide and examples. See the [API guide](docs/API.md) for endpoint descriptions and runnable examples, [Swagger UI](http://127.0.0.1:8000/docs) for interactive requests, or the [OpenAPI schema](http://127.0.0.1:8000/openapi.json). The first calculation for a calibration configuration samples random sequences and caches the component statistics for subsequent requests.
 
 ## Docker
 
@@ -44,6 +44,14 @@ curl --fail-with-body http://127.0.0.1:8000/api/score \
 ```
 
 This example uses small calibration and reference samples for a quick execution check. Scientific applications require sampling sizes appropriate to the question. Every result includes a `provenance` block with the software version, the parameter-set checksum, the complete request, the seed protocol and the Python and NumPy versions; keep it with reported results together with the dependency versions. The residue alphabet order determines the random streams used for calibration and search. Changes between versions and their measured effects are listed in the [changelog](CHANGELOG.md).
+
+The [API guide](docs/API.md#examples-with-curl) also provides sequence design, environmental comparison and angular exposure scan examples. A [Python client](examples/api_client.py) runs all four supplied requests without additional client dependencies:
+
+```bash
+python examples/api_client.py design --output design-result.json
+```
+
+The public server provides [interactive API documentation](https://helix.simbioslab.com/docs). Check the serving version in its [OpenAPI schema](https://helix.simbioslab.com/openapi.json) and the result provenance before comparing numerical results with a specified release.
 
 ## Model scope and limitations
 
@@ -121,7 +129,7 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 
 - `app/`: API, search workflows and static browser interface.
 - `Code/`: scoring, calibration and four parameter tables.
-- `tests/` and `examples/`: automated checks and an API request example.
+- `tests/`, `examples/` and `docs/`: automated checks, API request examples, a Python client and the API guide.
 - `tools/measure_changes.py`: measures the numerical effect of each model change between versions, with a separate control that changes only the search random stream.
 - `tools/reproduce_article_table1.py` and `tools/data/`: retain the versioned comparison with the method article and its declared protocol.
 - `tools/verify_parameter_sources.py` and `tools/data/parameter_sources/`: verify runtime neighbor parameters against the transcribed primary tables, with explicit source axes and model extensions.
