@@ -26,7 +26,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 
 function provenance(mode) {
   return {
-    software: 'Helix Design Studio', version: '1.0.0rc1',
+    software: 'Helix Design Studio', version: '1.0.0rc5',
     parameters_sha256: 'parameters-fixture', seed_protocol: 'seed-sequence-fixture',
     python: '3.12.8', numpy: '2.2.4',
     request: {
@@ -40,18 +40,18 @@ function provenance(mode) {
   };
 }
 
-function scored(sequence, designEnergy, scoreEnergy) {
+function scored(sequence, energy) {
   return {
-    sequence, energy: scoreEnergy, z_score: scoreEnergy / 10,
+    sequence, energy, z_score: energy / 10,
     environment: { preset: 'interfacial_neg' },
-    design_geometry: { energy: designEnergy, z_score: designEnergy / 10 },
+    design_geometry: { energy, z_score: energy / 10, orientation: 'own hydrophobic moment' },
   };
 }
 
 function specific(sequence, objective, designZ) {
   return {
     sequence,
-    target_environment: scored(sequence, designZ * 10, -100 - designZ),
+    target_environment: scored(sequence, designZ * 10),
     off_target_environments: [],
     specificity_design: { objective, z_score_margin: 1, rank: 99 },
   };
@@ -98,10 +98,10 @@ test('partial metadata falls back to an accepted member, then to the submitted r
   assert.equal(withoutMeta.candidates.length, 0);
 });
 
-test('family partial sorts by the optimized geometry and preserves complete scored members', () => {
+test('family partial sorts by the displayed energy and preserves complete scored members', () => {
   const ctx = context();
   const meta = provenance('family');
-  const members = [scored('AAAA', -1, -100), { ...scored('EEEE', -3, -10), provenance: meta }];
+  const members = [scored('AAAA', -1), { ...scored('EEEE', -3), provenance: meta }];
   const data = ctx.partialFamilyPayload({ members: Object.freeze(members), target: 3 }, 'interrupted by an error');
   assert.equal(data.provenance, meta);
   assert.equal(data.request, meta.request);
@@ -186,7 +186,7 @@ for (const mode of ['family', 'specificity']) {
   for (const ending of ['stop', 'error', 'eof']) {
     test(`${mode}: ${ending} keeps accepted results downloadable with canonical provenance`, async () => {
       const meta = provenance(mode);
-      const member = mode === 'family' ? scored('AAAA', -2, -3) : specific('AAAA', -2, -3);
+      const member = mode === 'family' ? scored('AAAA', -2) : specific('AAAA', -2, -3);
       const harness = streamHarness(mode, async ({ emit, signal, result }) => {
         emit({ type: 'meta', payload: { provenance: meta, environment: { preset: 'interfacial_neg' }, min_distance: 2 } });
         emit({ type: 'candidate', payload: { accepted: 1, attempt: 1, target: 3, member } });
@@ -223,7 +223,7 @@ for (const mode of ['family', 'specificity']) {
 
   test(`${mode}: candidate provenance is retained if meta is absent`, async () => {
     const meta = provenance(mode);
-    const member = { ...(mode === 'family' ? scored('AAAA', -2, -3) : specific('AAAA', -2, -3)), provenance: meta };
+    const member = { ...(mode === 'family' ? scored('AAAA', -2) : specific('AAAA', -2, -3)), provenance: meta };
     const harness = streamHarness(mode, async ({ emit }) => {
       emit({ type: 'candidate', payload: { accepted: 1, attempt: 1, target: 3, member } });
       throw new Error('Connection interrupted');
@@ -243,7 +243,7 @@ for (const mode of ['family', 'specificity']) {
 
   for (const lateError of [false, true]) {
     test(`${mode}: complete JSON is unchanged${lateError ? ' after a later connection error' : ''}`, async () => {
-      const member = mode === 'family' ? scored('AAAA', -2, -3) : specific('AAAA', -2, -3);
+      const member = mode === 'family' ? scored('AAAA', -2) : specific('AAAA', -2, -3);
       const finalData = {
         ...(mode === 'family'
           ? { members: [member], family_size_requested: 3, family_size_returned: 1, status_message: 'Completed' }
@@ -267,4 +267,28 @@ for (const mode of ['family', 'specificity']) {
 test('family renderer never offers an empty JSON collection', () => {
   const html = context().renderFamilyState({ members: [], target: 3, accepted: 0, finalData: { members: [] } });
   assert.doesNotMatch(html, /data-download-family/);
+});
+
+
+test('specificity CSV exports a single scoring convention with no duplicate design columns', () => {
+  const candidate = specific('AAAA', -2, -3);
+  const off = { ...scored('AAAA', -20), environment: { preset: 'homogeneous_polar' } };
+  candidate.off_target_environments = [off];
+  const csv = context().buildSpecificityCsv({
+    ...candidate, candidates: [candidate],
+    specificity_collection: { off_target_presets: ['homogeneous_polar'] },
+  });
+  const [header, row] = csv.split('\n').map((line) => line.split(','));
+  assert.equal(header.length, row.length);
+  assert.ok(header.includes('target_z_score'));
+  assert.ok(header.includes('homogeneous_polar_z_score'));
+  assert.doesNotMatch(header.join(','), /design_geometry|standard/);
+  assert.equal(row[header.indexOf('target_z_score')], '-3.000000');
+  assert.equal(row[header.indexOf('homogeneous_polar_z_score')], '-2.000000');
+});
+
+test('family renderer shows only the single optimized score', () => {
+  const html = context().renderFamilyState({ members: [scored('AAAA', -2)], target: 1, accepted: 1 });
+  assert.match(html, /Score: energy -2.000 \| Z -0.200/);
+  assert.doesNotMatch(html, /design geometry|fixed wheel/);
 });

@@ -1,6 +1,18 @@
 # Changelog
 
-Use `v0.1.0` for the original comparison baseline, `v1.0.0rc1` for the previous candidate, `v1.0.0rc2` for the source-corrected parameter set, `v1.0.0rc3` for the documented API distribution, and `v1.0.0rc4` for the current release. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+Use `v0.1.0` for the original comparison baseline, `v1.0.0rc2` for the source-corrected parameter set, `v1.0.0rc4` for the last release with fixed-phase search objectives, and `v1.0.0rc5` for the current release with aligned search objectives. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+
+## 1.0.0rc5 — 2026-10-15
+
+### Hydrophobic-moment alignment during sequence search
+
+- Design, Family, Cross-Design and Specificity now orient **every proposed sequence** by its own hydrophobic moment before computing its objective in an interfacial environment. The moment points to the center of the apolar sector. Calibration decoys and random reference sequences follow that same rule. Homogeneous environments do not require rotation, and a numerically zero hydrophobic moment retains the preset phase.
+- The search, the displayed score, family ranking, cross-environment compromise and specificity margins now use the same calibrated Hamiltonian and reference distribution for each environment. Completed candidates are not rescored under a second orientation convention. The `design_geometry` response field remains for compatibility and repeats the associated score, Z-score, components and actual phase; its orientation metadata describes the rule actually used.
+- The change is a scientific extension of the fixed-geometry sequence optimization described in the [method article](https://doi.org/10.1021/acs.jctc.6c01278) and retained through 1.0.0rc4. Earlier searches held the wheel phase fixed and then also reported a separate hydrophobic-moment-aligned score. In 1.0.0rc5, residue substitutions can rotate the complete helix during the search and thereby change the environmental contributions of other residues.
+- Hydrophobic-moment alignment is a prescribed geometric approximation. It does not minimize the full score over all rotation angles, predict equilibrium orientation or establish antimicrobial activity. Multi-environment objectives apply the rule separately in each environment; their scores are not a calculation of a single shared physical orientation across membranes.
+- The six component equations, weights, neighbor tables and residue scales are unchanged. Parameter-set checksums therefore remain unchanged; the software version and orientation metadata identify the revised objective. Calibrations and random-reference distributions must match the orientation rule. Aligned scoring reuses only matching aligned calibrations, not the earlier fixed-phase search calibrations.
+- Previous **design sequences, rankings, cross-environment compromises and specificity margins must be recalculated** before being attributed to this release. Reusing a seed does not preserve a search trajectory when the objective changes. The standard scoring convention used by Score, Compare and Penetration was already individually aligned; this release unifies searches with that convention.
+- The README describes browser workflows and downloadable reproducibility records. Backend request examples remain available as technical documentation for local installations.
 
 ## 1.0.0rc4 — 2026-10-14
 
@@ -49,9 +61,10 @@ The [complete parameter comparison](tools/data/parameter_correction_comparison.j
 
 The largest combined score change is BP100 in homogeneous apolar medium. The mean percentile of 150 random 18-residue sequences in the anionic interface is 51.245 in the previous parameter set and 51.483 after both corrections. Design sequence differences reflect the sensitivity of these paired stochastic searches to changed objectives; the position percentages do not estimate biological effects or typical differences for arbitrary inputs.
 
-To reproduce the paired parameter comparison, create a separate checkout of the preceding tag and run the current tool:
+To reproduce this historical paired parameter comparison, run the tool from `v1.0.0rc2` and create a separate checkout of the preceding tag. Running it from a later release with changed search objectives would not isolate the parameter corrections:
 
 ```bash
+git checkout v1.0.0rc2
 git worktree add ../helix-1.0.0rc1 v1.0.0rc1
 python tools/measure_parameter_corrections.py --baseline ../helix-1.0.0rc1 --output parameter_correction_comparison.json
 ```

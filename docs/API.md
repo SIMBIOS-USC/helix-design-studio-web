@@ -1,12 +1,12 @@
 # API guide
 
-The HTTP API provides the same calculations as the browser interface. Send JSON requests to a server running the version you intend to use, and retain the complete JSON responses for reproducibility.
+This is technical documentation for the backend of a local Helix Design Studio installation. The browser interface is the application workflow for scoring and designing peptide sequences. When testing the backend, use the intended software version and retain the complete JSON responses for reproducibility.
 
 ## Interactive documentation
 
 On a local installation, open [Swagger UI](http://127.0.0.1:8000/docs), [ReDoc](http://127.0.0.1:8000/redoc), or the [OpenAPI schema](http://127.0.0.1:8000/openapi.json). Swagger UI shows request fields and validation limits and lets you execute requests with **Try it out**.
 
-The public server offers [Swagger UI](https://helix.simbioslab.com/docs), [ReDoc](https://helix.simbioslab.com/redoc), and its [OpenAPI schema](https://helix.simbioslab.com/openapi.json). Check the schema's `info.version` and each result's `provenance.version` before comparing calculations from different servers. For a specified release, install its Git tag and run it locally using the [installation instructions](../README.md#installation).
+Check the local schema's `info.version` and each result's `provenance.version` before comparing calculations. For a specified release, install its Git tag using the [installation instructions](../README.md#installation).
 
 ## Available calculations
 
@@ -15,7 +15,7 @@ All calculation endpoints below accept HTTP `POST` with `Content-Type: applicati
 | Endpoint | Purpose | Main response fields |
 |---|---|---|
 | `/api/score` | Score one sequence in one environment | `sequence`, `energy`, `z_score`, `breakdown`, `environment`, `calibration`, `random_reference` |
-| `/api/design` | Search for one sequence in a target environment | Standard score fields, `design_geometry`, `design_settings` |
+| `/api/design` | Search for one sequence in a target environment | Score fields, compatible `design_geometry` copy, `design_settings` |
 | `/api/compare` | Evaluate the same sequence in two environments | `environment_a`, `environment_b`, `energy_gap`, `z_score_gap` |
 | `/api/optimal-penetration` | Scan angular membrane exposure from 0 to 100% | `profile`, `best_penetration_percent`, `best_score`, `scan_settings` |
 | `/api/design-family` | Generate a sequence family in one environment | `members`, `family_size_returned` |
@@ -38,7 +38,11 @@ For family design, iterate over `members`. For specificity design, iterate over 
 - `seed` makes a request reproducible under the same software, parameters, dependency versions and complete protocol. Calibration, reference sampling and searches use separate random streams.
 - `length`, `steps`, and `restarts` control sequence searches. Additional family, cross-environment and specificity options are described in the interactive schema.
 
-The standard interfacial score rotates **each sequence by its own hydrophobic moment**, pointing that moment at the center of the apolar sector. Query sequences, calibration decoys and random reference sequences use the same rule. If the moment is numerically zero, the preset phase is retained. Searches optimize a fixed wheel geometry and additionally report the standard oriented score in their results; `design_geometry` identifies the geometry actually optimized. Lower scores indicate better compatibility with the assumed helical state within a specified protocol. They are dimensionless comparative scores and do not establish antimicrobial activity or membrane selectivity.
+In interfacial environments, **each sequence is rotated by its own hydrophobic moment**, pointing that moment at the center of the apolar sector. This includes every search proposal, query, calibration decoy and random reference sequence. If the moment is numerically zero, the preset phase is retained; homogeneous media do not require alignment. Each environment's search and reported score share one calibrated Hamiltonian and one reference distribution. A mutation can change the phase of the entire sequence, so its environmental score must be reevaluated under that new phase.
+
+From 1.0.0rc5, `design_geometry` is a compatibility copy of the containing score's `energy`, `z_score`, `percentile_lower_is_better` and `breakdown`, plus the actual `environment.wheel_phase_deg` and orientation metadata; it does not represent a second scoring convention. Family ranking, cross-environment objectives and specificity margins use these same aligned scores. In 1.0.0rc4 and earlier, the field instead identified the separate fixed-phase search objective; retain the release version when interpreting saved results.
+
+Alignment is a geometric scoring rule, not minimization of the complete Hamiltonian over rotation angle or a prediction of equilibrium orientation. Lower scores indicate better compatibility with the assumed helical state within the specified protocol. The scores are dimensionless comparisons and do not establish antimicrobial activity or membrane selectivity.
 
 The Penetration endpoint scans 21 exposure settings in 5% increments. Zero percent is a homogeneous polar environment; 100% is a homogeneous apolar environment. Intermediate settings use an apolar-sector half-width of `40 + 1.1 × percent` degrees and the same hydrophobic-moment alignment rule. This percentage describes an **angular exposure mask**, not a physical insertion depth.
 
@@ -64,7 +68,7 @@ curl --fail-with-body http://127.0.0.1:8000/api/design \
   --data @examples/design.json > design-result.json
 ```
 
-The example allows A, L, K, E, G, F and S and runs one 1,000-step search. Read `sequence` for the candidate, `design_geometry.energy` for the optimized objective, and the top-level `energy` and `z_score` for its standard oriented score.
+The example allows A, L, K, E, G, F and S and runs one 1,000-step search. Read `sequence` for the candidate and `energy` and `z_score` for its aligned score. `design_geometry.energy` and `.z_score` duplicate these values for compatibility; the objective optimized in this single-environment search is `energy`.
 
 **Compare magainin 2 in an anionic interface and a polar medium:**
 
@@ -97,7 +101,7 @@ python examples/api_client.py compare --output compare-result.json
 python examples/api_client.py penetration --output penetration-result.json
 ```
 
-Choose another installation with `--base-url`, for example `--base-url https://helix.simbioslab.com`. Check that installation's software version before using or comparing its numerical results. The client identifies its requests with `User-Agent: Helix-Design-Studio-API/1.0`; it does not require an API key.
+Choose another local installation with `--base-url`, for example `--base-url http://127.0.0.1:8080`. Check that installation's software version before using or comparing its numerical results. The client identifies its requests with `User-Agent: Helix-Design-Studio-API/1.0`.
 
 ## Handling errors
 

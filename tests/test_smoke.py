@@ -194,15 +194,6 @@ class WebSmokeTests(unittest.TestCase):
             # Same Hamiltonian under another preset name.
             ("/api/specificity-design", {**specificity, "off_target_environments": [
                 {"preset": "interfacial_pos", "membrane_charge": "neg"}]}),
-            # Search geometry is fixed even when the preset's standard scoring rule differs.
-            ("/api/specificity-design", {
-                "target_environment": {"preset": "interfacial_neg", "membrane_charge": "neu"},
-                "off_target_environments": [{"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}],
-            }),
-            ("/api/specificity-design-stream", {
-                "target_environment": {"preset": "interfacial_neg", "membrane_charge": "neu"},
-                "off_target_environments": [{"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}],
-            }),
             ("/api/score", {"sequence": "ALKD", "n_decoy": 100}),
         ]
         for route, payload in invalid:
@@ -520,32 +511,121 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         self.assertGreater(sum(percentiles) / len(percentiles), 35)
         self.assertLess(sum(percentiles) / len(percentiles), 65)
 
-    def test_search_uses_fixed_geometry_and_scoring_orients(self):
-        """Searches optimize the fixed-geometry Hamiltonian (one- and two-body terms only); the
-        standard score orients each sequence, query and references alike, by its hydrophobic moment."""
-        import itertools
+    def test_search_and_score_share_oriented_calibration_and_reference(self):
+        """The search is calibrated with independently aligned decoys, not fixed-phase decoys."""
+        import numpy as np
+        from unittest.mock import patch
 
-        env = self.engine.resolve_environment(self.env_a)
+        residues = ["A", "K", "G", "L"]
+        env = self.engine.resolve_environment({**self.env_a, "wheel_phase_deg": 37.0})
+        weights = self.engine.normalize_weights(None)
+        with tempfile.TemporaryDirectory() as cache_dir, patch.dict(os.environ, {"HELIX_CACHE_DIR": cache_dir}):
+            design, scoring = self.engine.report_models(
+                6, residues, env, weights, n_decoys=100, seed=7, n_random=100,
+            )
+            self.assertIs(design, scoring)
+            self.assertTrue(design.builder.align_phase)
+            self.assertEqual(len(list(Path(cache_dir).glob("zscore_stats_*.json"))), 1)
+            # Reconstruct the environmental calibration directly with an independent
+            # moment-angle calculation, preserving the published decoy sampling seed.
+            rng = np.random.default_rng(7)
+            raw_environment = []
+            for _ in range(100):
+                codes = rng.integers(0, len(residues), size=6).tolist()
+                sequence = self.engine.codes_to_seq(codes, residues)
+                angles = np.deg2rad(np.arange(6) * 100.0)
+                hydro = np.array([self.engine.HYDROPHOBICITY_FP[aa] for aa in sequence])
+                mx, my = np.sum(hydro * np.cos(angles)), np.sum(hydro * np.sin(angles))
+                phase = 37.0 if math.hypot(mx, my) < 1e-10 else -math.degrees(math.atan2(my, mx)) % 360
+                mask = np.abs((np.arange(6) * 100.0 + phase + 180.0) % 360.0 - 180.0) <= 90.0
+                raw_environment.append(float(np.mean(np.where(mask, -hydro, hydro))))
+            mu, sigma = design.builder.stats["env_pol"]
+            self.assertAlmostEqual(mu, float(np.mean(raw_environment)), places=12)
+            self.assertAlmostEqual(sigma, float(np.std(raw_environment)), places=12)
+            rescored = self.engine.score_sequence(
+                "AKGLKA", env, residues, weights, n_decoys=100, n_random=100, seed=7,
+            )
+            self.assertEqual(rescored["calibration"]["terms"],
+                             self.engine.score_with_model("AKGLKA", design, residues, weights)["calibration"]["terms"])
+            self.assertEqual(rescored["random_reference"]["mean"], design.reference["mean"])
+            self.assertEqual(len(list(Path(cache_dir).glob("zscore_stats_*.json"))), 1)
 
-        def third_order(builder, term, base, positions):
-            total = 0.0
-            for size in range(len(positions) + 1):
-                for subset in itertools.combinations(positions, size):
-                    codes = [1 - code if idx in subset else code for idx, code in enumerate(base)]
-                    total += (-1) ** (len(positions) - size) * getattr(builder, term)(codes)
-            return total
+    def test_every_search_proposal_uses_sequence_dependent_alignment(self):
+        """Observe the actual objective evaluations, not only rescoring of final candidates."""
+        from unittest.mock import patch
 
-        design = self.engine.build_builder(12, ["A", "K"], env, n_decoys=100, oriented=False)
-        scoring = self.engine.build_builder(12, ["A", "K"], env, n_decoys=100, oriented=True)
-        base = [0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1]
-        for term in ("_raw_env_pol", "_raw_env_chg", "_raw_electrostatic"):
-            with self.subTest(term=term):
-                self.assertAlmostEqual(third_order(design, term, base, (1, 4, 7)), 0.0, places=12)
-        self.assertGreater(max(abs(third_order(scoring, "_raw_env_pol", base, triple))
-                               for triple in itertools.combinations(range(12), 3)), 0.01)
-        designed = self.post("/api/design", self.design)
-        self.assertEqual(designed["design_geometry"]["orientation"], "fixed wheel phase")
-        self.assertEqual(designed["design_geometry"]["wheel_phase_deg"], env["wheel_phase_deg"])
+        original = self.engine.compute_breakdown
+        evaluations = []
+
+        def observe(builder, codes, weights):
+            if builder.kwargs["wheel_halfwidth_deg"] == 90.0:
+                self.assertTrue(builder.align_phase)
+                mx = sum(self.engine.HYDROPHOBICITY_FP[builder.amino_acids[code]] *
+                         math.cos(math.radians(index * 100.0)) for index, code in enumerate(codes))
+                my = sum(self.engine.HYDROPHOBICITY_FP[builder.amino_acids[code]] *
+                         math.sin(math.radians(index * 100.0)) for index, code in enumerate(codes))
+                phase = (builder.kwargs["wheel_phase_deg"] if math.hypot(mx, my) < 1e-10
+                         else -math.degrees(math.atan2(my, mx)) % 360.0)
+                difference = (builder.phase_for(codes) - phase + 180.0) % 360.0 - 180.0
+                self.assertAlmostEqual(difference, 0.0, places=10)
+                evaluations.append(tuple(codes))
+            return original(builder, codes, weights)
+
+        settings = dict(length=6, residues=["A", "K", "L", "G"], n_decoys=100, steps=20, restarts=1)
+        workflows = {
+            "Design": lambda: self.engine.design_sequence(environment=self.env_a, **settings),
+            "Family": lambda: self.engine.design_family(environment=self.env_a, family_size=2,
+                                                       oversample_factor=1, **settings),
+            "Cross-Design": lambda: self.engine.cross_environment_design(
+                environment_a=self.env_a, environment_b=self.env_b, lambda_gap=0.5, **settings),
+            "Specificity": lambda: self.engine.design_specificity(
+                target_environment=self.env_a, off_target_environments=[self.env_b],
+                num_sequences=1, **settings),
+        }
+        # Small internal reference populations distinguish the many objective
+        # evaluations from the few final-score/reference evaluations in this test.
+        with patch.object(self.engine, "compute_breakdown", side_effect=observe), \
+                patch.object(self.engine, "DESIGN_N_RANDOM", 5), \
+                patch.object(self.engine, "SPECIFICITY_N_RANDOM", 5):
+            for name, run in workflows.items():
+                with self.subTest(workflow=name):
+                    evaluations.clear()
+                    run()
+                    self.assertGreater(len(evaluations), 20)
+                    self.assertGreater(len(set(evaluations)), 5)
+
+    def test_aligned_search_handles_vanishing_moment_and_homogeneous_media(self):
+        from unittest.mock import patch
+
+        env = self.engine.resolve_environment({**self.env_a, "wheel_phase_deg": 37.0})
+        with patch.object(self.engine, "simulated_annealing", return_value={"sequence": "GGGG"}):
+            designed = self.engine.design_sequence(4, env, ["G", "A"], n_decoys=100, steps=1, restarts=1)
+        self.assertEqual(designed["environment"]["wheel_phase_deg"], 37.0)
+        self.assertFalse(designed["environment"]["phase_aligned_to_hydrophobic_moment"])
+        self.assertEqual(designed["design_geometry"]["wheel_phase_deg"], 37.0)
+        self.assertEqual(designed["design_geometry"]["orientation"],
+                         "preset wheel phase (vanishing hydrophobic moment)")
+        self.assertEqual(designed["design_geometry"]["energy"], designed["energy"])
+        for preset in ("homogeneous_polar", "homogeneous_apolar"):
+            with self.subTest(preset=preset):
+                first = self.engine.design_sequence(4, {"preset": preset, "wheel_phase_deg": 37.0},
+                                                   ["G", "A"], n_decoys=100, steps=20, restarts=1)
+                second = self.engine.design_sequence(4, {"preset": preset, "wheel_phase_deg": 151.0},
+                                                    ["G", "A"], n_decoys=100, steps=20, restarts=1)
+                self.assertEqual(first["sequence"], second["sequence"])
+                self.assertEqual(first["energy"], second["energy"])
+                self.assertEqual(first["z_score"], second["z_score"])
+                self.assertEqual(first["design_geometry"]["orientation"], "fixed wheel phase")
+
+    def test_specificity_keys_include_orientation_rule_for_partial_sectors(self):
+        """An explicitly overridden homogeneous preset remains fixed-phase, unlike an interface."""
+        aligned = {"preset": "interfacial_neu", "wheel_halfwidth_deg": 90.0}
+        fixed = {"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}
+        self.assertNotEqual(self.engine.physical_environment_key(aligned), self.engine.physical_environment_key(fixed))
+        result = self.post("/api/specificity-design", {
+            **self.design, "target_environment": aligned, "off_target_environments": [fixed], "num_sequences": 1,
+        })
+        self.assertEqual(len(result["off_target_environments"]), 1)
 
     def test_pairwise_term_counts_contacts_up_to_i_plus_4(self):
         residues = list(self.engine.DEFAULT_ALPHABET_16)
@@ -556,19 +636,61 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         self.assertAlmostEqual(builder._raw_pw_int(codes), expected / (10 * 4))
 
     def test_workflows_report_consistent_energies(self):
+        """All four design workflows optimize exactly the scores displayed and exported."""
+        def assert_matches_score(result, n_random=500):
+            score_request = {
+                **self.common, "sequence": result["sequence"],
+                "environment": {"preset": result["environment"]["preset"]}, "n_random": n_random,
+            }
+            # Specificity uses a 3000-sequence internal reference; the web Score
+            # request limit is 2000, so compare its complete reference directly.
+            rescored = (self.engine.score_sequence(**score_request) if n_random == 3000
+                        else self.post("/api/score", score_request))
+            for key in ("energy", "z_score", "breakdown", "random_reference", "calibration"):
+                self.assertEqual(result[key], rescored[key], key)
+            alias = result["design_geometry"]
+            for key in ("energy", "z_score", "breakdown", "percentile_lower_is_better"):
+                self.assertEqual(alias[key], result[key], key)
+            self.assertEqual(alias["wheel_phase_deg"], result["environment"]["wheel_phase_deg"])
+            if self.engine.is_interfacial(result["environment"]):
+                self.assertEqual(alias["orientation"], "own hydrophobic moment")
+                phase_sum = (result["environment"]["wheel_phase_deg"] +
+                             result["observables"]["mu_h_phase_deg"]) % 360
+                self.assertAlmostEqual(min(phase_sum, 360.0 - phase_sum), 0.0, places=9)
+
         designed = self.post("/api/design", self.design)
-        rescored = self.post("/api/score", {**self.common, "sequence": designed["sequence"], "n_random": 500})
-        self.assertAlmostEqual(designed["energy"], rescored["energy"], places=9)
-        self.assertAlmostEqual(designed["z_score"], rescored["z_score"], places=9)
+        assert_matches_score(designed)
+        family = self.post("/api/design-family", {**self.design, "family_size": 2, "oversample_factor": 1})
+        for member in family["members"]:
+            assert_matches_score(member)
+        self.assertEqual([member["energy"] for member in family["members"]],
+                         sorted(member["energy"] for member in family["members"]))
 
         environments = {"environment_a": self.env_a, "environment_b": self.env_b}
-        cross = self.post("/api/cross-design", {**self.design, **environments})
-        # The search optimizes the design geometry; results also carry the standard score.
-        self.assertAlmostEqual(cross["cross_design"]["energy_a"], cross["environment_a"]["design_geometry"]["energy"], places=9)
-        self.assertAlmostEqual(cross["cross_design"]["energy_b"], cross["environment_b"]["design_geometry"]["energy"], places=9)
-        compared = self.post("/api/compare", {**self.common, **environments, "sequence": cross["sequence"]})
-        self.assertAlmostEqual(compared["environment_a"]["energy"], cross["environment_a"]["energy"], places=9)
-        self.assertAlmostEqual(compared["environment_b"]["energy"], cross["environment_b"]["energy"], places=9)
+        cross = self.post("/api/cross-design", {**self.design, **environments, "lambda_gap": 0.7})
+        a, b = cross["environment_a"], cross["environment_b"]
+        assert_matches_score(a)
+        assert_matches_score(b)
+        self.assertEqual(cross["cross_design"]["energy_a"], a["energy"])
+        self.assertEqual(cross["cross_design"]["energy_b"], b["energy"])
+        self.assertAlmostEqual(cross["cross_design"]["objective"],
+                               a["energy"] + b["energy"] + 0.7 * abs(a["energy"] - b["energy"]), places=12)
+
+        specificity = self.post("/api/specificity-design", {
+            **self.design, "target_environment": self.env_a,
+            "off_target_environments": [self.env_b, {"preset": "interfacial_pos"}],
+            "lambda_balance": 0.35, "num_sequences": 1,
+        })
+        for candidate in specificity["candidates"]:
+            target = candidate["target_environment"]
+            off = candidate["off_target_environments"]
+            for scored in [target, *off]:
+                assert_matches_score(scored, n_random=3000)
+            metrics = candidate["specificity_design"]
+            worst = min(item["energy"] for item in off)
+            self.assertAlmostEqual(metrics["objective"], target["energy"] - 0.65 * worst, places=12)
+            self.assertEqual(metrics["energy_margin"], worst - target["energy"])
+            self.assertEqual(metrics["z_score_margin"], min(item["z_score"] for item in off) - target["z_score"])
 
     def test_invalid_parameter_tables_are_rejected(self):
         import numpy as np
