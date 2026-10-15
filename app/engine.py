@@ -163,10 +163,10 @@ def is_interfacial(environment: Dict[str, Any]) -> bool:
 
 
 def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
-    """Configuración del Hamiltoniano de búsqueda, que usa una fase fija.
+    """Configuración física y regla de orientación del Hamiltoniano.
 
-    El nombre del preset y su regla de orientación para el score estándar no
-    distinguen dos Hamiltonianos de búsqueda con el mismo sector y carga.
+    En un sector parcial, el preset determina si cada secuencia se alinea por su
+    momento hidrofóbico. La fase base sigue importando cuando ese momento es nulo.
     """
     env = resolve_environment(environment)
     half_width = float(env["wheel_halfwidth_deg"])
@@ -176,7 +176,7 @@ def physical_environment_key(environment: Dict[str, Any]) -> tuple[Any, ...]:
     charge = str(env["membrane_charge"])
     if half_width < 0.0:
         return ("all_polar", charge)
-    return ("sector", half_width, float(env["wheel_phase_deg"]), charge)
+    return ("sector", half_width, float(env["wheel_phase_deg"]), charge, is_interfacial(env))
 
 
 def effective_environment(builder: HamiltonianBuilder, codes: List[int], environment: Dict[str, Any]) -> Dict[str, Any]:
@@ -241,9 +241,9 @@ def build_builder(
     stats_cache_dir: Optional[str] = None,
     oriented: bool = False,
 ) -> HamiltonianBuilder:
-    """oriented=False: Hamiltoniano de geometría fija (fase del preset), el que optimizan las búsquedas.
-    oriented=True: en interfaces, cada secuencia se orienta con su propio momento hidrofóbico
-    (protocolo de puntuación, aplicado igual a la consulta y a las referencias)."""
+    """En interfaces, oriented=True alinea cada secuencia por su propio momento
+    hidrofóbico: consulta, propuestas, calibración y referencias comparten esta regla.
+    oriented=False permite comparaciones explícitas con una fase fija."""
     return HamiltonianBuilder(
         L=length,
         amino_acids=amino_acids,
@@ -489,14 +489,10 @@ def report_models(
     seed: int,
     n_random: int,
 ) -> tuple[ScoringModel, ScoringModel]:
-    """(modelo de diseño con geometría fija, modelo de puntuación orientado); coinciden fuera de interfaces."""
-    design = scoring_model(length, amino_acids, environment, weights,
-                           n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=False)
-    if not is_interfacial(environment):
-        return design, design
-    scoring = scoring_model(length, amino_acids, environment, weights,
-                            n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
-    return design, scoring
+    """Un único modelo para la búsqueda y el resultado; se conserva la tupla por compatibilidad."""
+    model = scoring_model(length, amino_acids, environment, weights,
+                          n_decoys=n_decoys, seed=seed, n_random=n_random, oriented=True)
+    return model, model
 
 
 def score_with_model(sequence: str, model: ScoringModel, amino_acids: List[str], weights: Dict[str, float]) -> Dict[str, Any]:
@@ -512,17 +508,23 @@ def report_sequence(
     amino_acids: List[str],
     weights: Dict[str, float],
 ) -> Dict[str, Any]:
-    """Puntuación estándar (mismo protocolo que Score) más la energía en la geometría de diseño,
-    que es la magnitud que optimizó la búsqueda."""
+    """Puntuación optimizada, con el mismo protocolo que Score.
+
+    design_geometry conserva el esquema de exportación anterior, pero ahora
+    reproduce la misma puntuación y orientación que el resultado principal.
+    """
     report = score_with_model(sequence, scoring, amino_acids, weights)
     in_design = report if design is scoring else score_with_model(sequence, design, amino_acids, weights)
+    orientation = in_design["calibration"]["orientation"]
+    if design.builder.align_phase and not in_design["environment"]["phase_aligned_to_hydrophobic_moment"]:
+        orientation = "preset wheel phase (vanishing hydrophobic moment)"
     report["design_geometry"] = {
         "energy": in_design["energy"],
         "z_score": in_design["z_score"],
         "percentile_lower_is_better": in_design["percentile_lower_is_better"],
         "breakdown": in_design["breakdown"],
         "wheel_phase_deg": in_design["environment"]["wheel_phase_deg"],
-        "orientation": "fixed wheel phase",
+        "orientation": orientation,
     }
     return report
 
@@ -783,8 +785,7 @@ def _build_specificity_candidate_payload(
     best_target_energy: float,
     best_off_energies: List[float],
 ) -> Dict[str, Any]:
-    # Márgenes en la geometría de diseño (la del objetivo optimizado); cada entorno incluye además
-    # su puntuación estándar (mismo protocolo que Score).
+    # Objetivo y márgenes usan las mismas puntuaciones mostradas en cada entorno.
     target_score = report_sequence(sequence, *target_models, amino_acids, weights)
     off_target_scores = [report_sequence(sequence, *models, amino_acids, weights) for models in off_models]
     target_design = target_score["design_geometry"]
@@ -801,7 +802,7 @@ def _build_specificity_candidate_payload(
         "worst_off_target_preset": worst_off_target["environment"]["preset"],
         "energy_margin": off_design[worst_index]["energy"] - target_design["energy"],
         "z_score_margin": min(item["z_score"] for item in off_design) - target_design["z_score"],
-        "margins_geometry": "design (fixed wheel phase)",
+        "margins_geometry": "same orientation rule as Score in each environment",
         "steps": steps,
         "restarts": restarts,
         "seed": seed,
@@ -953,7 +954,7 @@ def design_family_stream(
         if len(unique_results) >= family_size:
             break
 
-    # Orden por la magnitud optimizada (energía en la geometría de diseño).
+    # Orden por la misma energía que se optimizó y se muestra en Score.
     ranked = sorted(unique_results.values(), key=lambda item: item["design_geometry"]["energy"])[:family_size]
     payload = {
         "environment": env,
@@ -1143,7 +1144,7 @@ def cross_environment_design(
 
     assert best_codes is not None
     sequence = codes_to_seq(best_codes, amino_acids)
-    # Puntuación estándar (como en Compare) y energía en la geometría de diseño que optimizó la búsqueda.
+    # La búsqueda y Compare usan la misma regla de orientación en cada entorno.
     scored_a = report_sequence(sequence, design_a, scoring_a, amino_acids, w)
     scored_b = report_sequence(sequence, design_b, scoring_b, amino_acids, w)
     comparison = {
