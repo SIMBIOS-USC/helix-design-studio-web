@@ -1,460 +1,2635 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Helix Design Studio</title>
-    <link rel="icon" href="/static/assets/simbios-logo.png" />
-    <link rel="stylesheet" href="/static/styles.css?v=2" />
-    <script src="/static/3Dmol-min.js?v=2.4.2" defer></script>
-  </head>
-  <body>
-    <div class="grain"></div>
-    <header class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Environment-conditioned helix design</p>
-        <h1>Helix Design Studio</h1>
-        <p class="lede">
-          Explore how amino-acid sequence affects the compatibility of a predefined
-          alpha-helical state with polar media, apolar media and membrane-like
-          interfaces. The app can score a sequence, design single candidates or
-          families, compare environments, optimize one-vs-rest specificity and
-          export an ideal helical PDB.
-        </p>
-        <p class="article-note">
-          For a full explanation of the theory behind this platform, see:
-          <strong>Daniel Conde-Torres, Rebeca García-Fandiño, Ángel Piñeiro</strong>,
-          <a class="article-link" href="https://doi.org/10.1021/acs.jctc.6c01278" target="_blank" rel="noopener noreferrer">
-            <em>Environment-Conditioned Design of α-Helical Peptides</em>
-          </a>.
-          <span class="article-status">J. Chem. Theory Comput. 2026, 22, 9776–9789</span>
-          <span class="article-doi">doi: 10.1021/acs.jctc.6c01278</span>
-        </p>
-        <div class="pill-row">
-          <span class="pill">Linked to SIMBIOS</span>
-          <span class="pill">Guide included.</span>
-          <span class="pill">Score a sequence</span>
-          <span class="pill">Design families</span>
-          <span class="pill">Specificity design</span>
-          <span class="pill">Cross-environment tradeoffs</span>
-          <span class="pill">PDB export</span>
-        </div>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>
+   Helix Design Studio
+  </title>
+  <link href="/static/assets/helix-environment-mark.png" rel="icon" type="image/png"/>
+  <link href="/static/styles.css?v=7" rel="stylesheet"/>
+  <link href="/static/funding.css?v=1" rel="stylesheet"/>
+  <link href="/static/about.css?v=2" rel="stylesheet"/>
+  <link href="/static/studio.css?v=3" rel="stylesheet"/>
+  <script defer="" src="/static/3Dmol-min.js?v=2.4.2">
+  </script>
+ </head>
+ <body>
+  <a class="skip-link" href="#main-content">
+   Skip to workspace
+  </a>
+  <header class="topbar">
+   <button aria-controls="workspace-navigation" aria-expanded="false" aria-label="Open navigation" class="mobile-menu" type="button">
+    ☰
+   </button>
+   <button aria-label="Helix Design Studio — overview" class="brand" data-open-panel="home" type="button">
+    <span class="brand-mark">
+     <img alt="" class="brand-logo" height="52" src="/static/assets/helix-environment-mark.png" width="52"/>
+    </span>
+    <span>
+     Helix
+     <span class="brand-sub">
+      DESIGN STUDIO
+     </span>
+    </span>
+   </button>
+   <div class="topbar-divider">
+   </div>
+   <span class="topbar-label">
+    Peptide design &amp; analysis
+   </span>
+   <div class="topbar-end">
+    <a href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">
+     By SIMBIOS
+     <span aria-hidden="true">
+      ↗
+     </span>
+    </a>
+    <button class="help-button" data-open-panel="guide" type="button">
+     <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+      <path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1zm0 0v15">
+      </path>
+     </svg>
+     Quick guide
+    </button>
+   </div>
+  </header>
+  <main class="layout">
+   <aside class="sidebar" id="workspace-navigation">
+    <nav aria-label="Workspace">
+     <div class="nav-group">
+      <p class="nav-label">
+       WORKSPACE
+      </p>
+      <button aria-controls="panel-home" class="nav-btn active" data-panel="home" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z">
+        </path>
+       </svg>
+       <span>
+        Overview
+       </span>
+      </button>
+     </div>
+     <div class="nav-group nav-analysis">
+      <p class="nav-label">
+       ANALYZE A SEQUENCE
+      </p>
+      <button aria-controls="panel-score" class="nav-btn" data-panel="score" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <circle cx="10" cy="10" r="6">
+        </circle>
+        <path d="m15 15 6 6M7 10h6m-3-3v6">
+        </path>
+       </svg>
+       <span>
+        Check a sequence
+       </span>
+      </button>
+      <button aria-controls="panel-compare" class="nav-btn" data-panel="compare" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4">
+        </path>
+       </svg>
+       <span>
+        Compare environments
+       </span>
+      </button>
+      <button aria-controls="panel-penetration" class="nav-btn" data-panel="penetration" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M3 7c3-5 6 5 9 0s6 5 9 0M3 17c3-5 6 5 9 0s6 5 9 0M12 3v18">
+        </path>
+       </svg>
+       <span>
+        Explore exposure
+       </span>
+      </button>
+     </div>
+     <div class="nav-group nav-design">
+      <p class="nav-label">
+       DESIGN NEW SEQUENCES
+      </p>
+      <button aria-controls="panel-design" class="nav-btn" data-panel="design" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="m5 19 12-12 3 3L8 22zM15 3v3m6-1-2 2M4 5v4M2 7h4m13 9h3m-1-2v4">
+        </path>
+       </svg>
+       <span>
+        Design a peptide
+       </span>
+      </button>
+      <button aria-controls="panel-family" class="nav-btn" data-panel="family" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <rect height="7" rx="2" width="7" x="3" y="3">
+        </rect>
+        <rect height="7" rx="2" width="7" x="14" y="3">
+        </rect>
+        <rect height="7" rx="2" width="7" x="3" y="14">
+        </rect>
+        <rect height="7" rx="2" width="7" x="14" y="14">
+        </rect>
+       </svg>
+       <span>
+        Create a family
+       </span>
+      </button>
+      <button aria-controls="panel-specificity" class="nav-btn" data-panel="specificity" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <circle cx="12" cy="12" r="9">
+        </circle>
+        <circle cx="12" cy="12" r="5">
+        </circle>
+        <circle cx="12" cy="12" r="1">
+        </circle>
+       </svg>
+       <span>
+        Design for selectivity
+       </span>
+      </button>
+      <button aria-controls="panel-cross" class="nav-btn" data-panel="cross" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M4 4v4c0 5 16 3 16 8v4M4 20v-4c0-5 16-3 16-8V4m-3 3 3-3 3 3m-6 10 3 3 3-3">
+        </path>
+       </svg>
+       <span>
+        Design for two environments
+       </span>
+      </button>
+     </div>
+     <div class="nav-group">
+      <p class="nav-label">
+       STRUCTURE
+      </p>
+      <button aria-controls="panel-pdb" class="nav-btn" data-panel="pdb" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="m12 3 9 5v9l-9 5-9-5V8zM3 8l9 5 9-5m-9 5v9M7 5l10 6">
+        </path>
+       </svg>
+       <span>
+        Build a 3D helix
+       </span>
+      </button>
+     </div>
+     <div class="nav-bottom">
+      <button aria-controls="panel-guide" class="nav-btn" data-panel="guide" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1zm0 0v15">
+        </path>
+       </svg>
+       <span>
+        Guide &amp; concepts
+       </span>
+      </button>
+      <button aria-controls="panel-about" class="nav-btn" data-panel="about" type="button">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <circle cx="12" cy="12" r="9">
+        </circle>
+        <path d="M12 11v6m0-10v1">
+        </path>
+       </svg>
+       <span>
+        About the project
+       </span>
+      </button>
+      <div class="sidebar-credit">
+       <span class="status-dot">
+       </span>
+       Open science. Open possibilities.
       </div>
-    </header>
-
-    <main class="layout">
-      <aside class="sidebar">
-        <button class="nav-btn" data-panel="about">About</button>
-        <button class="nav-btn active" data-panel="guide">Guide</button>
-        <button class="nav-btn" data-panel="score">Score</button>
-        <button class="nav-btn" data-panel="penetration">Penetration</button>
-        <button class="nav-btn" data-panel="design">Design</button>
-        <button class="nav-btn" data-panel="family">Family</button>
-        <button class="nav-btn" data-panel="compare">Compare</button>
-        <button class="nav-btn" data-panel="specificity">Specificity</button>
-        <button class="nav-btn" data-panel="cross">Cross-Design</button>
-        <button class="nav-btn" data-panel="pdb">PDB</button>
+     </div>
+    </nav>
+   </aside>
+   <section class="content" id="main-content" tabindex="-1">
+    <section aria-labelledby="home-title" class="panel active home-panel" id="panel-home">
+     <div class="welcome">
+      <div class="welcome-copy">
+       <p class="eyebrow">
+        PEPTIDE DESIGN &amp; ANALYSIS
+       </p>
+       <h1 id="home-title">
+        Explore and design
+        <em>
+         helical peptides.
+        </em>
+       </h1>
+       <p class="welcome-description">
+        See how a sequence of amino acids fits different environments — or design a new one.
+       </p>
+      </div>
+      <figure aria-labelledby="workflow-visual-title" class="workflow-visual" data-environment="membrane">
+       <figcaption class="visual-heading" id="workflow-visual-title">
+        <span>
+         One workspace. Two ways to explore peptides.
+        </span>
+        <small>
+         How it works
+        </small>
+       </figcaption>
+       <div class="workflow-diagram">
+        <section aria-labelledby="input-stage-title" class="diagram-stage input-stage">
+         <h2 id="input-stage-title">
+          <span>
+           01
+          </span>
+          Your starting point
+         </h2>
+         <div class="input-options">
+          <button aria-label="Analyze a sequence you already have" class="input-option" data-open-panel="score" type="button">
+           <span class="path-label">
+            ANALYZE
+           </span>
+           <span aria-label="Illustrative amino-acid sequence: W F E K W E" class="amino-sequence">
+            <span>
+             W
+            </span>
+            <span>
+             F
+            </span>
+            <span>
+             E
+            </span>
+            <span>
+             K
+            </span>
+            <span>
+             W
+            </span>
+            <span>
+             E
+            </span>
+           </span>
+           <strong>
+            A sequence you have
+           </strong>
+          </button>
+          <div class="input-or">
+           <span>
+            or
+           </span>
+          </div>
+          <button aria-label="Design a new sequence" class="input-option" data-open-panel="design" type="button">
+           <span class="path-label">
+            DESIGN
+           </span>
+           <span aria-hidden="true" class="length-blueprint">
+            <span>
+            </span>
+            <span>
+            </span>
+            <span>
+            </span>
+            <span>
+            </span>
+            <span>
+            </span>
+            <span>
+            </span>
+            <i>
+             ↔
+            </i>
+           </span>
+           <strong>
+            A sequence you need
+           </strong>
+           <small>
+            Set length &amp; amino acids
+           </small>
+          </button>
+         </div>
+        </section>
+        <div class="diagram-connector">
+         <svg aria-hidden="true" viewbox="0 0 32 24">
+          <path d="M2 12h26m-7-6 7 6-7 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
+          </path>
+         </svg>
+        </div>
+        <section aria-labelledby="environment-stage-title" class="diagram-stage environment-stage">
+         <h2 id="environment-stage-title">
+          <span>
+           02
+          </span>
+          Choose its surroundings
+         </h2>
+         <div aria-label="Preview an environment" class="environment-options" role="group">
+          <button aria-pressed="false" data-preview-environment="water" type="button">
+           <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24">
+            <path d="M12 3C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-12Z">
+            </path>
+            <path d="M8 15a4 4 0 0 0 4 4">
+            </path>
+           </svg>
+           Water-like
+          </button>
+          <button aria-pressed="true" data-preview-environment="membrane" type="button">
+           <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24">
+            <rect height="16" rx="3" width="18" x="3" y="4">
+            </rect>
+            <path d="M3 12c3-4 6 4 9 0s6 4 9 0M7 16h2m6 0h2">
+            </path>
+           </svg>
+           Membrane
+          </button>
+          <button aria-pressed="false" data-preview-environment="apolar" type="button">
+           <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24">
+            <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z">
+            </path>
+            <circle cx="12" cy="12" r="3">
+            </circle>
+           </svg>
+           Non-polar
+          </button>
+         </div>
+         <svg aria-labelledby="environment-scene-title environment-scene-desc" class="environment-scene" role="img" viewbox="0 0 340 184">
+          <title id="environment-scene-title">
+           An assumed alpha-helix at a membrane-like interface
+          </title>
+          <desc id="environment-scene-desc">
+           A schematic of a single helical peptide with water-like and non-polar surroundings. This illustrates the environment model, not a predicted structure or insertion depth.
+          </desc>
+          <defs>
+           <lineargradient id="peptide-bead" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#b2e1cc">
+            </stop>
+            <stop offset=".45" stop-color="#62ab8b">
+            </stop>
+            <stop offset="1" stop-color="#28654e">
+            </stop>
+           </lineargradient>
+          </defs>
+          <g class="scene-layer scene-water">
+           <rect fill="#edf7fa" height="184" rx="12" width="340">
+           </rect>
+           <circle cx="24" cy="49" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="75" cy="56" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="130" cy="44" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="194" cy="58" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="250" cy="44" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="310" cy="56" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="35" cy="138" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="96" cy="157" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="156" cy="140" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="220" cy="156" fill="#b1d5e0" r="3">
+           </circle>
+           <circle cx="292" cy="138" fill="#b1d5e0" r="3">
+           </circle>
+           <text x="18" y="24">
+            Water-like medium
+           </text>
+          </g>
+          <g class="scene-layer scene-membrane">
+           <rect fill="#edf7fa" height="184" rx="12" width="340">
+           </rect>
+           <path d="M0 96H340V172Q340 184 328 184H12Q0 184 0 172Z" fill="#f2ebd9">
+           </path>
+           <path d="M0 96Q22 90 44 96T88 96T132 96T176 96T220 96T264 96T308 96Q330 90 340 94" fill="none" stroke="#a7c9bf" stroke-width="1.5">
+           </path>
+           <text x="18" y="24">
+            Water-like
+           </text>
+           <text x="18" y="166">
+            Non-polar
+           </text>
+           <path d="M18 29V68M18 117v29" stroke="#9eafa7" stroke-width="1">
+           </path>
+          </g>
+          <g class="scene-layer scene-apolar">
+           <rect fill="#f6efdf" height="184" rx="12" width="340">
+           </rect>
+           <path d="M18 48h14m22 96h14m234-95h14m-40 95h14m-92-112h14m-65 125h14" stroke="#dfcda5" stroke-linecap="round" stroke-width="3">
+           </path>
+           <text x="18" y="24">
+            Non-polar medium
+           </text>
+          </g>
+          <g aria-hidden="true">
+           <path d="M79.4 68.0 L78.7 68.2 L78.0 68.9 L77.4 69.9 L76.8 71.3 L76.4 73.2 L76.1 75.3 L75.9 77.8 L75.9 80.5 L76.2 83.4 L76.6 86.5 L77.2 89.7 L78.1 93.0 L79.2 96.3 L80.5 99.5 L82.0 102.6 L83.7 105.5 L85.7 108.2 L87.8 110.7 L90.0 112.8 L92.4 114.7 L94.9 116.1 L97.5 117.1 L100.1 117.8 L102.8 118.0" fill="none" stroke="#2d6954" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M126.2 68.0 L125.5 68.2 L124.8 68.9 L124.2 69.9 L123.6 71.3 L123.2 73.2 L122.9 75.3 L122.7 77.8 L122.8 80.5 L123.0 83.4 L123.4 86.5 L124.1 89.7 L124.9 93.0 L126.0 96.3 L127.3 99.5 L128.8 102.6 L130.6 105.5 L132.5 108.2 L134.6 110.7 L136.8 112.8 L139.2 114.7 L141.7 116.1 L144.3 117.1 L146.9 117.8 L149.6 118.0" fill="none" stroke="#2d6954" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M173.0 68.0 L172.3 68.2 L171.6 68.9 L171.0 69.9 L170.4 71.3 L170.0 73.2 L169.7 75.3 L169.5 77.8 L169.6 80.5 L169.8 83.4 L170.2 86.5 L170.9 89.7 L171.7 93.0 L172.8 96.3 L174.1 99.5 L175.6 102.6 L177.4 105.5 L179.3 108.2 L181.4 110.7 L183.6 112.8 L186.0 114.7 L188.5 116.1 L191.1 117.1 L193.8 117.8 L196.4 118.0" fill="none" stroke="#2d6954" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M219.8 68.0 L219.1 68.2 L218.4 68.9 L217.8 69.9 L217.2 71.3 L216.8 73.2 L216.5 75.3 L216.3 77.8 L216.4 80.5 L216.6 83.4 L217.0 86.5 L217.7 89.7 L218.5 93.0 L219.6 96.3 L220.9 99.5 L222.5 102.6 L224.2 105.5 L226.1 108.2 L228.2 110.7 L230.4 112.8 L232.8 114.7 L235.3 116.1 L237.9 117.1 L240.6 117.8 L243.2 118.0" fill="none" stroke="#2d6954" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M266.6 68.0 L266.3 68.0 L266.0 68.2 L265.7 68.4 L265.4 68.7 L265.1 69.1 L264.8 69.5 L264.5 70.0 L264.3 70.7 L264.0 71.3 L263.8 72.1 L263.6 72.9 L263.5 73.8 L263.4 74.8 L263.3 75.8 L263.2 76.9 L263.2 78.1 L263.2 79.3 L263.2 80.5 L263.3 81.8 L263.4 83.1 L263.5 84.4 L263.7 85.8 L264.0 87.2 L264.2 88.7" fill="none" stroke="#2d6954" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <circle cx="77.6" cy="69.5" fill="url(#peptide-bead)" r="3.3" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="83.7" cy="105.5" fill="url(#peptide-bead)" r="3.1" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="122.8" cy="80.5" fill="url(#peptide-bead)" r="3.1" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="142.6" cy="116.5" fill="url(#peptide-bead)" r="3.3" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="173.2" cy="97.3" fill="url(#peptide-bead)" r="3.0" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="216.7" cy="73.8" fill="url(#peptide-bead)" r="3.2" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="229.7" cy="112.2" fill="url(#peptide-bead)" r="3.2" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="264.2" cy="88.7" fill="url(#peptide-bead)" r="3.0" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <path d="M56.0 118.0 L58.7 117.8 L61.3 117.1 L63.9 116.1 L66.4 114.7 L68.8 112.8 L71.0 110.7 L73.1 108.2 L75.1 105.5 L76.8 102.6 L78.3 99.5 L79.6 96.3 L80.7 93.0 L81.6 89.7 L82.2 86.5 L82.6 83.4 L82.9 80.5 L82.9 77.8 L82.7 75.3 L82.4 73.2 L82.0 71.3 L81.5 69.9 L80.8 68.9 L80.1 68.2 L79.4 68.0" fill="none" stroke="#72b498" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M102.8 118.0 L105.5 117.8 L108.1 117.1 L110.7 116.1 L113.2 114.7 L115.6 112.8 L117.9 110.7 L119.9 108.2 L121.9 105.5 L123.6 102.6 L125.1 99.5 L126.4 96.3 L127.5 93.0 L128.4 89.7 L129.0 86.5 L129.4 83.4 L129.7 80.5 L129.7 77.8 L129.6 75.3 L129.3 73.2 L128.8 71.3 L128.3 69.9 L127.6 68.9 L126.9 68.2 L126.2 68.0" fill="none" stroke="#72b498" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M149.6 118.0 L152.3 117.8 L154.9 117.1 L157.5 116.1 L160.0 114.7 L162.4 112.8 L164.7 110.7 L166.8 108.2 L168.7 105.5 L170.4 102.6 L171.9 99.5 L173.2 96.3 L174.3 93.0 L175.2 89.7 L175.8 86.5 L176.3 83.4 L176.5 80.5 L176.5 77.8 L176.4 75.3 L176.1 73.2 L175.6 71.3 L175.1 69.9 L174.4 68.9 L173.7 68.2 L173.0 68.0" fill="none" stroke="#72b498" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M196.4 118.0 L199.1 117.8 L201.7 117.1 L204.3 116.1 L206.8 114.7 L209.2 112.8 L211.5 110.7 L213.6 108.2 L215.5 105.5 L217.2 102.6 L218.7 99.5 L220.0 96.3 L221.1 93.0 L222.0 89.7 L222.6 86.5 L223.1 83.4 L223.3 80.5 L223.3 77.8 L223.2 75.3 L222.9 73.2 L222.4 71.3 L221.9 69.9 L221.2 68.9 L220.6 68.2 L219.8 68.0" fill="none" stroke="#72b498" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <path d="M243.2 118.0 L245.9 117.8 L248.6 117.1 L251.1 116.1 L253.6 114.7 L256.0 112.8 L258.3 110.7 L260.4 108.2 L262.3 105.5 L264.0 102.6 L265.5 99.5 L266.9 96.3 L267.9 93.0 L268.8 89.7 L269.4 86.5 L269.9 83.4 L270.1 80.5 L270.1 77.8 L270.0 75.3 L269.7 73.2 L269.2 71.3 L268.7 69.9 L268.1 68.9 L267.4 68.2 L266.6 68.0" fill="none" stroke="#72b498" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+           </path>
+           <circle cx="56.0" cy="118.0" fill="url(#peptide-bead)" r="3.5" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="81.8" cy="88.7" fill="url(#peptide-bead)" r="4.0" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="116.4" cy="112.2" fill="url(#peptide-bead)" r="3.8" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="129.4" cy="73.8" fill="url(#peptide-bead)" r="3.8" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="172.8" cy="97.3" fill="url(#peptide-bead)" r="4.0" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="173.0" cy="68.0" fill="url(#peptide-bead)" r="3.5" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="203.5" cy="116.5" fill="url(#peptide-bead)" r="3.7" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="223.3" cy="80.5" fill="url(#peptide-bead)" r="3.9" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="262.3" cy="105.5" fill="url(#peptide-bead)" r="3.9" stroke="#34795b" stroke-width=".6">
+           </circle>
+           <circle cx="268.5" cy="69.5" fill="url(#peptide-bead)" r="3.7" stroke="#34795b" stroke-width=".6">
+           </circle>
+          </g>
+          <g class="helix-callout">
+           <path d="M288 65l20-18" fill="none" stroke="#608777" stroke-width="1">
+           </path>
+           <text x="236" y="38">
+            Assumed α-helix
+           </text>
+          </g>
+         </svg>
+         <p aria-live="polite" class="environment-preview-caption">
+          An interface between water-like and non-polar regions.
+         </p>
+        </section>
+        <div class="diagram-connector">
+         <svg aria-hidden="true" viewbox="0 0 32 24">
+          <path d="M2 12h26m-7-6 7 6-7 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">
+          </path>
+         </svg>
+        </div>
+        <section aria-labelledby="output-stage-title" class="diagram-stage output-stage">
+         <h2 id="output-stage-title">
+          <span>
+           03
+          </span>
+          Explore the results
+         </h2>
+         <div class="output-options">
+          <div class="output-option">
+           <div class="output-miniature">
+            <svg aria-hidden="true" class="output-wheel" viewbox="0 0 70 70">
+             <path d="M35 7V63M7 35H63" stroke="#dce5de">
+             </path>
+             <circle cx="35" cy="35" fill="none" r="24" stroke="#bad6c5" stroke-dasharray="2 4">
+             </circle>
+             <path d="M35 11 58 42 17 51 35 11 53 18 12 31 35 59 53 18" fill="none" stroke="#70a58c" stroke-width="1.2">
+             </path>
+             <circle cx="35.0" cy="11.0" fill="#2e8061" r="4.5">
+             </circle>
+             <circle cx="55.8" cy="23.0" fill="#2e8061" r="4.5">
+             </circle>
+             <circle cx="55.8" cy="47.0" fill="#2e8061" r="4.5">
+             </circle>
+             <circle cx="35.0" cy="59.0" fill="#a9ceb8" r="4.5">
+             </circle>
+             <circle cx="14.2" cy="47.0" fill="#a9ceb8" r="4.5">
+             </circle>
+             <circle cx="14.2" cy="23.0" fill="#a9ceb8" r="4.5">
+             </circle>
+            </svg>
+           </div>
+           <div>
+            <span class="path-label">
+             ANALYZE
+            </span>
+            <strong>
+             Score &amp; compare
+            </strong>
+            <small>
+             How well does it fit?
+            </small>
+           </div>
+          </div>
+          <div class="output-option">
+           <div aria-hidden="true" class="candidate-stack">
+            <span>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+            </span>
+            <span>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+            </span>
+            <span>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+             <i>
+             </i>
+            </span>
+           </div>
+           <div>
+            <span class="path-label">
+             DESIGN
+            </span>
+            <strong>
+             New candidates
+            </strong>
+            <small>
+             One sequence or a family
+            </small>
+           </div>
+          </div>
+         </div>
+         <div class="diagram-export">
+          <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24" width="16">
+           <path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5">
+           </path>
+          </svg>
+          Export results &amp; an ideal 3D helix
+         </div>
+        </section>
+       </div>
+       <p class="visual-footnote">
+        Schematic overview · Assumes an α-helix · Model-based compatibility
+       </p>
+      </figure>
+     </div>
+     <div class="section-heading">
+      <h2>
+       What would you like to do?
+      </h2>
+      <span>
+       Start here. No setup needed.
+      </span>
+     </div>
+     <div class="start-grid">
+      <button class="start-card" data-open-panel="score" type="button">
+       <span class="start-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <circle cx="10" cy="10" r="6">
+         </circle>
+         <path d="m15 15 6 6M7 10h6m-3-3v6">
+         </path>
+        </svg>
+       </span>
+       <span class="start-tag">
+        I HAVE A SEQUENCE
+       </span>
+       <strong>
+        Check a sequence
+       </strong>
+       <span class="start-description">
+        Find out how well your peptide fits a chosen environment.
+       </span>
+       <span class="start-link">
+        Analyze a sequence
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </span>
+      </button>
+      <button class="start-card design-start" data-open-panel="design" type="button">
+       <span class="start-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="m5 19 12-12 3 3L8 22zM15 3v3m6-1-2 2M4 5v4M2 7h4m13 9h3m-1-2v4">
+         </path>
+        </svg>
+       </span>
+       <span class="start-tag">
+        I WANT A NEW SEQUENCE
+       </span>
+       <strong>
+        Design a peptide
+       </strong>
+       <span class="start-description">
+        Choose a length and an environment. Explore a new candidate.
+       </span>
+       <span class="start-link">
+        Create a sequence
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </span>
+      </button>
+     </div>
+     <div class="section-heading more-heading">
+      <h2>
+       Take your exploration further
+      </h2>
+      <span>
+       All tools, one workspace
+      </span>
+     </div>
+     <div class="tools-grid">
+      <button class="tool-card" data-open-panel="compare" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4">
+         </path>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Compare environments
+        </strong>
+        <small>
+         One sequence. Two environments.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+      <button class="tool-card" data-open-panel="family" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <rect height="7" rx="2" width="7" x="3" y="3">
+         </rect>
+         <rect height="7" rx="2" width="7" x="14" y="3">
+         </rect>
+         <rect height="7" rx="2" width="7" x="3" y="14">
+         </rect>
+         <rect height="7" rx="2" width="7" x="14" y="14">
+         </rect>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Create a family
+        </strong>
+        <small>
+         Find several different candidates.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+      <button class="tool-card" data-open-panel="penetration" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M3 7c3-5 6 5 9 0s6 5 9 0M3 17c3-5 6 5 9 0s6 5 9 0M12 3v18">
+         </path>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Explore exposure
+        </strong>
+        <small>
+         Scan from water-like to non-polar.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+      <button class="tool-card" data-open-panel="specificity" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <circle cx="12" cy="12" r="9">
+         </circle>
+         <circle cx="12" cy="12" r="5">
+         </circle>
+         <circle cx="12" cy="12" r="1">
+         </circle>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Design for selectivity
+        </strong>
+        <small>
+         Favor one environment over others.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+      <button class="tool-card" data-open-panel="cross" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 4v4c0 5 16 3 16 8v4M4 20v-4c0-5 16-3 16-8V4m-3 3 3-3 3 3m-6 10 3 3 3-3">
+         </path>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Design for two environments
+        </strong>
+        <small>
+         Find a balance between two settings.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+      <button class="tool-card" data-open-panel="pdb" type="button">
+       <span class="tool-icon">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="m12 3 9 5v9l-9 5-9-5V8zM3 8l9 5 9-5m-9 5v9M7 5l10 6">
+         </path>
+        </svg>
+       </span>
+       <span>
+        <strong>
+         Build a 3D helix
+        </strong>
+        <small>
+         View and export an ideal structure.
+        </small>
+       </span>
+       <span aria-hidden="true" class="card-arrow">
+        ↗
+       </span>
+      </button>
+     </div>
+     <div class="model-note">
+      <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+       <circle cx="12" cy="12" r="9">
+       </circle>
+       <path d="M12 11v6m0-10v1">
+       </path>
+      </svg>
+      <p>
+       <strong>
+        A model for exploration.
+       </strong>
+       Results describe compatibility with an assumed α-helix, not a prediction of folding or biological activity.
+      </p>
+      <button data-open-panel="guide" type="button">
+       How it works
+       <span aria-hidden="true">
+        ↗
+       </span>
+      </button>
+     </div>
+    </section>
+    <section class="panel" id="panel-about" aria-labelledby="about-page-title">
+     <div class="about-focus">
+      <header class="about-introduction">
+       <p class="eyebrow">THE SOFTWARE &amp; THE SCIENCE</p>
+       <div class="about-title-row">
+        <img src="/static/assets/helix-environment-mark.png" alt="" width="70" height="70"/>
+        <h2 id="about-page-title" tabindex="-1">About Helix Design Studio</h2>
+       </div>
+       <p class="about-purpose">Explore how a peptide sequence fits different environments, or design new candidates for the environment you choose.</p>
+       <ul class="about-capabilities" aria-label="What Helix helps you do">
+        <li><span aria-hidden="true">01</span> Score &amp; compare sequences</li>
+        <li><span aria-hidden="true">02</span> Design candidates &amp; families</li>
+        <li><span aria-hidden="true">03</span> Export ideal 3D helices</li>
+       </ul>
+       <p class="about-scope">The model assumes an α-helix and measures compatibility. It does not predict folding or biological activity.</p>
+      </header>
+      <div class="about-research-layout">
+       <article class="about-paper" aria-labelledby="about-paper-title">
+        <div class="about-paper-label">
+         <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6"/></svg>
+         <p class="eyebrow">THE SCIENCE BEHIND HELIX</p>
+        </div>
+        <h3 id="about-paper-title"><a href="https://doi.org/10.1021/acs.jctc.6c01278" rel="noopener noreferrer" target="_blank">Environment-Conditioned Design of α-Helical Peptides</a></h3>
+        <p class="about-paper-description">Read the scientific method behind sequence scoring, environment comparisons and peptide design.</p>
+        <div class="about-paper-citation">
+         <p class="about-paper-authors">Daniel Conde-Torres · Rebeca García-Fandiño · Ángel Piñeiro</p>
+         <p><cite>Journal of Chemical Theory and Computation</cite><br/>2026 · Volume 22 · Pages 9776–9789</p>
+        </div>
+        <div class="about-paper-actions">
+         <a class="about-paper-button" href="https://doi.org/10.1021/acs.jctc.6c01278" rel="noopener noreferrer" target="_blank">Read the paper <span aria-hidden="true">↗</span></a>
+         <span class="about-paper-doi">DOI: 10.1021/acs.jctc.6c01278</span>
+        </div>
+       </article>
+       <aside class="about-team" aria-labelledby="about-team-title">
+        <p class="eyebrow">DEVELOPED BY</p>
+        <div class="about-team-identity">
+         <img src="/static/assets/simbios-logo.png" alt="SIMBIOS logo" width="72" height="72"/>
+         <div><h3 id="about-team-title">SIMBIOS</h3><p>Simulating life. Atom by atom.</p></div>
+        </div>
+        <p class="about-team-description">Computational biophysics research on molecular simulation, membrane-active systems, biomolecular recognition and data-driven analysis.</p>
+        <div class="about-team-affiliation">
+         <img src="/static/assets/logo_USC.gif" alt="USC logo" width="52"/>
+         <span>Universidade de<br/>Santiago de Compostela</span>
+        </div>
+        <a class="about-team-link" href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">Meet the research group <span aria-hidden="true">↗</span></a>
+       </aside>
+      </div>
+     </div>
+     <!-- Project acknowledgements: the only addition to the previous About page. -->
+     <section class="project-acknowledgements" aria-labelledby="project-acknowledgements-title">
+      <h3 id="project-acknowledgements-title">Acknowledgements</h3>
+      <p>We gratefully acknowledge the support of the following research projects.</p>
+      <div class="about-grid">
+       <article class="about-card">
+        <div class="project-funding-logo">
+         <img class="project-xunta-logo" src="/static/assets/funding/xunta-de-galicia.svg" alt="Xunta de Galicia" width="245" height="70"/>
+        </div>
+        <h4 lang="gl">Consolidación e estruturación 2025 · GRC GI-2132</h4>
+        <p lang="gl">Sistemas Supramoleculares, Nanobiomimética e Biofísica Molecular – SupraNanoBioMol.</p>
+        <p>Xunta de Galicia · ED431C 2025/15</p>
+        <a class="external-link" href="https://investigacion.usc.gal/proyectos/1359933/detalle" rel="noopener noreferrer" target="_blank">View project details ↗</a>
+       </article>
+       <article class="about-card">
+        <div class="project-funding-logo">
+         <img src="/static/assets/funding/miciu-eu-aei.svg" alt="Ministerio de Ciencia, Innovación y Universidades; cofinanciado por la Unión Europea; Agencia Estatal de Investigación" width="433" height="100"/>
+        </div>
+        <h4 lang="es">Generación de Conocimiento 2022</h4>
+        <p lang="es">Proyectos de investigación orientada</p>
+        <p lang="es">Descifrando la conexión del código lipídico entre cáncer, infección y envejecimiento: hacia herramientas teranósticas no convencionales y vacunas basadas en la memoria innata.</p>
+        <p>Project PID2022-141534OB-I00 funded by MICIU/AEI/10.13039/501100011033 and by ERDF, EU.</p>
+        <a class="external-link" href="https://investigacion.usc.gal/proyectos/683273/detalle" rel="noopener noreferrer" target="_blank">View project details ↗</a>
+       </article>
+      </div>
+     </section>
+     <!-- End project acknowledgements. -->
+    </section>
+    <section class="panel" id="panel-guide">
+     <div class="panel-head">
+      <p class="eyebrow">
+       A LITTLE GUIDANCE
+      </p>
+      <h2 tabindex="-1">
+       Understand your results
+      </h2>
+      <p>
+       Start with the essentials. Open any topic when you want the details.
+      </p>
+     </div>
+     <div class="guide-essentials">
+      <article>
+       <span>
+        01
+       </span>
+       <h3>
+        Choose a sequence
+       </h3>
+       <p>
+        Use your own, try a reference, or design a new one.
+       </p>
+      </article>
+      <article>
+       <span>
+        02
+       </span>
+       <h3>
+        Choose its surroundings
+       </h3>
+       <p>
+        Water-like, non-polar, or a charged or neutral membrane interface.
+       </p>
+      </article>
+      <article>
+       <span>
+        03
+       </span>
+       <h3>
+        Explore compatibility
+       </h3>
+       <p>
+        A more negative Z-score is better relative to the random reference.
+       </p>
+      </article>
+     </div>
+     <div class="guide-grid">
+      <details class="guide-card">
+       <summary>
+        What the app does
+       </summary>
+       <p>
+        Use
+        <strong>
+         Check a sequence
+        </strong>
+        to evaluate one sequence,
+        <strong>
+         Design a peptide
+        </strong>
+        to search for a low-energy sequence in one environment,
+        <strong>
+         Create a family
+        </strong>
+        to generate several diverse candidates,
+        <strong>
+         Compare environments
+        </strong>
+        to inspect the same sequence in two environments,
+        <strong>
+         Design for selectivity
+        </strong>
+        to design one-vs-rest selective candidates, and
+        <strong>
+         Design for two environments
+        </strong>
+        to search for trade-offs between environments.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        How to read the results
+       </summary>
+       <p>
+        <strong>
+         Lower model energy
+        </strong>
+        means better compatibility with the chosen helical state within the model. These energies are reported in
+        <strong>
+         dimensionless Hamiltonian units
+        </strong>
+        , not in physical units such as kcal/mol, so they should be interpreted comparatively within the same scoring setup. A more negative
+        <strong>
+         Z-score
+        </strong>
+        means the sequence is better than the random-sequence background.
+        <strong>
+         Percentile
+        </strong>
+        tells you where the sequence sits relative to that random ensemble, with lower being better.
+        <strong>
+         Net charge
+        </strong>
+        follows the current model convention; in this version histidine is treated as neutral in the charge-dependent terms.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        What environments mean
+       </summary>
+       <p>
+        <strong>
+         Homogeneous polar
+        </strong>
+        approximates a water-like medium.
+        <strong>
+         Homogeneous apolar
+        </strong>
+        approximates a non-polar medium.
+        <strong>
+         Interfacial
+        </strong>
+        modes impose a membrane-facing and water-facing sector on the helical wheel, plus an anionic, neutral or cationic membrane surface charge. In the app,
+        <strong>
+         penetration depth
+        </strong>
+        is a percentage with the same meaning in every panel: 0% is the homogeneous polar medium, 100% the homogeneous apolar medium, and intermediate values use the interfacial preset with an apolar sector half-width of 40° + 1.1° per percent. It is an angular exposure setting, not a physical insertion depth. In interfacial environments, scoring and design both align each sequence by its own hydrophobic moment toward the apolar sector. Calibration and random reference sequences follow the same rule. If the hydrophobic moment vanishes, the preset wheel phase is used. Orientation has no effect in homogeneous media.
+       </p>
+       <p>
+        In the workspace, “Non-polar exposure” and “Explore exposure” refer to the original penetration-depth setting: an angular exposure coordinate, not a physical insertion depth. Interface labels indicate membrane surface charge.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        What λgap means
+       </summary>
+       <p>
+        <strong>
+         λgap
+        </strong>
+        is only used in
+        <strong>
+         Design for two environments
+        </strong>
+        . It penalizes sequences that behave very differently in the two chosen environments. Small values favor the best overall compromise; larger values push the search toward more balanced cross-environment compatibility.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        Hamiltonian terms
+       </summary>
+       <div class="equation-block">
+        <div class="equation">
+         H = λ
+         <sub>
+          env
+         </sub>
+         H
+         <sub>
+          env
+         </sub>
+         + λ
+         <sub>
+          chg
+         </sub>
+         H
+         <sub>
+          chg
+         </sub>
+         + λ
+         <sub>
+          local
+         </sub>
+         H
+         <sub>
+          local
+         </sub>
+         + λ
+         <sub>
+          pair
+         </sub>
+         H
+         <sub>
+          pair
+         </sub>
+         + λ
+         <sub>
+          elec
+         </sub>
+         H
+         <sub>
+          elec
+         </sub>
+         + λ
+         <sub>
+          neigh
+         </sub>
+         H
+         <sub>
+          neigh
+         </sub>
+        </div>
+       </div>
+       <p>
+        <strong>
+         Environment
+        </strong>
+        rewards residues that match the target medium.
+        <strong>
+         Charge
+        </strong>
+        captures residue preference with membrane surface charge.
+        <strong>
+         Local helix
+        </strong>
+        and
+        <strong>
+         Helix neighbors
+        </strong>
+        reward helical propensity.
+        <strong>
+         Pairwise
+        </strong>
+        adds sequence-dependent interaction preferences.
+        <strong>
+         Electrostatics
+        </strong>
+        captures attractive and repulsive charge interactions along the helix. The transverse hydrophobic moment is a geometric descriptor displayed on the helical wheel and used for interfacial alignment. It is not an energy term. Histidine contributes through the hydrophobicity and helical-propensity terms and is neutral in the charge-dependent terms.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        API and programmatic examples
+       </summary>
+       <p>
+        Use the HTTP API to run scoring, sequence design, environment comparisons and exposure scans from scripts. Open
+        <a class="external-link" href="/docs" rel="noopener noreferrer" target="_blank">
+         interactive API documentation
+        </a>
+        , download the
+        <a class="external-link" href="/openapi.json" rel="noopener noreferrer" target="_blank">
+         OpenAPI schema
+        </a>
+        , or follow the
+        <a class="external-link" href="https://github.com/SIMBIOS-USC/helix-design-studio-web/blob/main/docs/API.md" rel="noopener noreferrer" target="_blank">
+         API guide with curl and Python examples
+        </a>
+        . Check the serving version in the schema and retain each result's provenance when reporting calculations.
+       </p>
+      </details>
+      <details class="guide-card">
+       <summary>
+        Practical limitations
+       </summary>
+       <p>
+        The model scores compatibility with a predefined helical scaffold. It is best interpreted as a relative design and ranking tool. Experimental activity, folding kinetics, insertion depth and membrane disruption require additional validation.
+       </p>
+      </details>
+     </div>
+    </section>
+    <section class="panel" id="panel-score">
+     <div class="panel-head">
+      <p class="eyebrow">
+       ANALYZE
+      </p>
+      <h2 tabindex="-1">
+       Check a sequence
+      </h2>
+      <p>
+       How well does your peptide fit its environment?
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="score-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Your sequence
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Try a reference peptide
+          <select class="reference-peptide-select" data-reference-scope="score" name="reference_peptide">
+           <option value="">
+            Custom sequence
+           </option>
+          </select>
+          <span class="field-hint">
+           Choose an example to fill the sequence below.
+          </span>
+         </label>
+         <label>
+          Amino-acid sequence
+          <textarea aria-describedby="score-sequence-hint" autocapitalize="characters" maxlength="40" name="sequence" rows="2" spellcheck="false">WFEKWEKEWKEFWKEWKDFW</textarea>
+          <span class="field-hint" id="score-sequence-hint">
+           An example is ready. Replace it with your own one-letter amino-acid sequence (up to 40 residues).
+          </span>
+         </label>
+         <div class="reference-note hidden-field" data-reference-note="score">
+         </div>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose an environment
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment
+          <select class="env-preset" data-env-scope="score" name="preset">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option selected="" value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="score">
+          Non-polar exposure
+          <input class="penetration-slider" data-range-output="score" max="100" min="0" name="penetration_depth" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="score">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V"/>
+         </label>
+         <label>
+          Random reference size
+          <input max="2000" min="100" name="n_random" step="100" type="number" value="500"/>
+          <span class="field-hint">
+           Number of random sequences used to estimate the background mean and standard deviation for the Z-score. Web limit: 2,000.
+          </span>
+         </label>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Check sequence →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <circle cx="10" cy="10" r="6">
+         </circle>
+         <path d="m15 15 6 6M7 10h6m-3-3v6">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Understand your sequence
+       </h3>
+       <p>
+        A compatibility score, a comparison with random sequences, and a helical wheel.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
       </aside>
-
-      <section class="content">
-        <section class="panel" id="panel-about">
-          <div class="panel-head">
-            <h2>About</h2>
-            <p>Helix Design Studio is developed by SIMBIOS at the Universidade de Santiago de Compostela.</p>
-          </div>
-          <div class="about-grid">
-            <div class="about-card about-brand-card">
-              <div class="about-brand">
-                <img src="/static/assets/simbios-logo.png" alt="SIMBIOS logo" class="about-logo" />
-                <div>
-                  <h3>SIMBIOS</h3>
-                  <p class="about-tagline">Simulating life. Atom by atom.</p>
-                </div>
-              </div>
-              <div class="about-affiliation">
-                <img src="/static/assets/logo_USC.gif" alt="USC logo" class="about-usc-logo" />
-                <span>Universidade de Santiago de Compostela</span>
-              </div>
-              <p>Computational biophysics at the Universidade de Santiago de Compostela.</p>
-            </div>
-            <div class="about-card">
-              <h3>Helix Design Studio</h3>
-              <p>Helix Design Studio is an environment-conditioned sequence-design tool for predefined alpha-helical states. It helps users score sequences, design candidates and families, compare behavior across environments and export ideal helical structures for downstream work.</p>
-            </div>
-            <div class="about-card">
-              <h3>About the group</h3>
-              <p>SIMBIOS studies molecular simulation, membrane-active systems, biomolecular recognition and data-driven analysis.</p>
-            </div>
-            <div class="about-card">
-              <h3>Institutional link</h3>
-              <p>Visit SIMBIOS for publications and group information.</p>
-              <p><a class="external-link" href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">Visit SIMBIOS</a></p>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel active" id="panel-guide">
-          <div class="panel-head">
-            <h2>Guide and Interpretation</h2>
-            <p>This application scores how well a sequence fits a target alpha-helical state under a chosen environment model. It does not predict full folding from scratch or experimental activity directly.</p>
-          </div>
-          <div class="guide-grid">
-            <details class="guide-card" open>
-              <summary>What the app does</summary>
-              <p>Use <strong>Score</strong> to evaluate one sequence, <strong>Design</strong> to search for a low-energy sequence in one environment, <strong>Family</strong> to generate several diverse candidates, <strong>Compare</strong> to inspect the same sequence in two environments, <strong>Specificity</strong> to design one-vs-rest selective candidates, and <strong>Cross-Design</strong> to search for trade-offs between environments.</p>
-            </details>
-            <details class="guide-card" open>
-              <summary>How to read the results</summary>
-              <p><strong>Lower model energy</strong> means better compatibility with the chosen helical state within the model. These energies are reported in <strong>dimensionless Hamiltonian units</strong>, not in physical units such as kcal/mol, so they should be interpreted comparatively within the same scoring setup. A more negative <strong>Z-score</strong> means the sequence is better than the random-sequence background. <strong>Percentile</strong> tells you where the sequence sits relative to that random ensemble, with lower being better. <strong>Net charge</strong> follows the current model convention; in this version histidine is treated as neutral in the charge-dependent terms.</p>
-            </details>
-            <details class="guide-card">
-              <summary>What environments mean</summary>
-              <p><strong>Homogeneous polar</strong> approximates a water-like medium. <strong>Homogeneous apolar</strong> approximates a non-polar medium. <strong>Interfacial</strong> modes impose a membrane-facing and water-facing sector on the helical wheel, plus an anionic, neutral or cationic membrane surface charge. In the app, <strong>penetration depth</strong> is a percentage with the same meaning in every panel: 0% is the homogeneous polar medium, 100% the homogeneous apolar medium, and intermediate values use the interfacial preset with an apolar sector half-width of 40° + 1.1° per percent. It is an angular exposure setting, not a physical insertion depth. In interfacial environments, scoring and design both align each sequence by its own hydrophobic moment toward the apolar sector. Calibration and random reference sequences follow the same rule. If the hydrophobic moment vanishes, the preset wheel phase is used. Orientation has no effect in homogeneous media.</p>
-            </details>
-            <details class="guide-card">
-              <summary>What λgap means</summary>
-              <p><strong>λgap</strong> is only used in <strong>Cross-Design</strong>. It penalizes sequences that behave very differently in the two chosen environments. Small values favor the best overall compromise; larger values push the search toward more balanced cross-environment compatibility.</p>
-            </details>
-            <details class="guide-card">
-              <summary>Hamiltonian terms</summary>
-              <div class="equation-block">
-                <div class="equation">
-                  H = λ<sub>env</sub>H<sub>env</sub> + λ<sub>chg</sub>H<sub>chg</sub> + λ<sub>local</sub>H<sub>local</sub> + λ<sub>pair</sub>H<sub>pair</sub> + λ<sub>elec</sub>H<sub>elec</sub> + λ<sub>neigh</sub>H<sub>neigh</sub>
-                </div>
-              </div>
-              <p><strong>Environment</strong> rewards residues that match the target medium. <strong>Charge</strong> captures residue preference with membrane surface charge. <strong>Local helix</strong> and <strong>Helix neighbors</strong> reward helical propensity. <strong>Pairwise</strong> adds sequence-dependent interaction preferences. <strong>Electrostatics</strong> captures attractive and repulsive charge interactions along the helix. The transverse hydrophobic moment is a geometric descriptor displayed on the helical wheel and used for interfacial alignment. It is not an energy term. Histidine contributes through the hydrophobicity and helical-propensity terms and is neutral in the charge-dependent terms.</p>
-            </details>
-            <details class="guide-card">
-              <summary>API and programmatic examples</summary>
-              <p>Use the HTTP API to run scoring, sequence design, environment comparisons and exposure scans from scripts. Open <a class="external-link" href="/docs" target="_blank" rel="noopener noreferrer">interactive API documentation</a>, download the <a class="external-link" href="/openapi.json" target="_blank" rel="noopener noreferrer">OpenAPI schema</a>, or follow the <a class="external-link" href="https://github.com/SIMBIOS-USC/helix-design-studio-web/blob/main/docs/API.md" target="_blank" rel="noopener noreferrer">API guide with curl and Python examples</a>. Check the serving version in the schema and retain each result's provenance when reporting calculations.</p>
-            </details>
-            <details class="guide-card">
-              <summary>Practical limitations</summary>
-              <p>The model scores compatibility with a predefined helical scaffold. It is best interpreted as a relative design and ranking tool. Experimental activity, folding kinetics, insertion depth and membrane disruption require additional validation.</p>
-            </details>
-          </div>
-        </section>
-
-        <section class="panel" id="panel-score">
-          <div class="panel-head">
-            <h2>Score a Sequence</h2>
-            <p>Estimate relative compatibility of a sequence with a predefined helical state in a selected environment.</p>
-          </div>
-          <form id="score-form" class="tool-grid">
-            <label>Reference peptide
-              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="score">
-                <option value="">Custom sequence</option>
-              </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
-            </label>
-            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
-            <div class="reference-note hidden-field" data-reference-note="score"></div>
-            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
-            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="score">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg" selected>Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Random reference size
-              <input name="n_random" type="number" value="500" min="100" max="2000" step="100" />
-              <span class="field-hint">Number of random sequences used to estimate the background mean and standard deviation for the Z-score. Web limit: 2,000.</span>
-            </label>
-            <label class="penetration-field" data-penetration-field="score">Penetration depth
-              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="score" />
-              <span class="field-hint">Current value: <strong data-range-value="score">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <div class="actions"><button type="submit">Score sequence</button></div>
-          </form>
-          <div id="score-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-penetration">
-          <div class="panel-head">
-            <h2>Optimal Penetration</h2>
-            <p>Scan penetration depth for one sequence in one interfacial environment and define the optimum as the most negative Z-score.</p>
-          </div>
-          <form id="penetration-form" class="tool-grid">
-            <label>Reference peptide
-              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="penetration">
-                <option value="">Custom sequence</option>
-              </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
-            </label>
-            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
-            <div class="reference-note hidden-field" data-reference-note="penetration"></div>
-            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
-            <label>Interface type<select name="preset" class="env-preset" data-env-scope="penetration_scan">
-              <option value="interfacial_neg" selected>Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Random reference size
-              <input name="n_random" type="number" value="400" min="100" max="2000" step="100" />
-              <span class="field-hint">Background size used for each sampled penetration. Web limit: 2,000.</span>
-            </label>
-            <div class="scan-range-fixed">
-              <strong>Penetration scan</strong>
-              <span class="field-hint">The scan is fixed from <strong>0% = homogeneous polar medium (water-like)</strong> to <strong>100% = homogeneous apolar medium (chloroform-like)</strong>, with the selected interfacial preset used at intermediate points. The web app samples this path every 5%, for a total of <strong>21 points</strong>.</span>
-            </div>
-            <div class="actions"><button type="submit">Optimize penetration</button></div>
-          </form>
-          <div id="penetration-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-design">
-          <div class="panel-head">
-            <h2>Design for One Environment</h2>
-            <p>Run sequence-space simulated annealing against a single target environment.</p>
-          </div>
-          <form id="design-form" class="tool-grid">
-            <label>Length
-              <input name="length" type="number" value="20" min="4" max="40" />
-              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
-            </label>
-            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
-            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="design">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg" selected>Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Optimization steps (classical simulated annealing)
-              <input name="steps" type="number" value="12000" min="1000" max="50000" step="1000" />
-              <span class="field-hint">Number of Monte Carlo mutation steps used during the simulated-annealing search. Higher values let the optimizer test more sequence changes, usually improving exploration at the cost of longer runtime. Web limit: 50,000.</span>
-            </label>
-            <label class="penetration-field" data-penetration-field="design">Penetration depth
-              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="design" />
-              <span class="field-hint">Current value: <strong data-range-value="design">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <label>Restarts
-              <input name="restarts" type="number" value="8" min="1" max="20" />
-              <span class="field-hint">Independent annealing runs from different random starting points. Web limit: 20.</span>
-            </label>
-            <div class="support-note">Need heavier searches or custom large-scale runs? Please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
-            <div class="actions"><button type="submit">Design sequence</button></div>
-          </form>
-          <div id="design-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-family">
-          <div class="panel-head">
-            <h2>Design a Family</h2>
-            <p>Generate several unique low-energy candidates for the same environment instead of a single optimum.</p>
-          </div>
-          <form id="family-form" class="tool-grid">
-            <label>Length
-              <input name="length" type="number" value="20" min="4" max="40" />
-              <span class="field-hint">Number of residues in each designed helix. Web limit: 40.</span>
-            </label>
-            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
-            <label>Environment preset<select name="preset" class="env-preset" data-env-scope="family">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg" selected>Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Family size
-              <input name="family_size" type="number" value="6" min="2" max="12" />
-              <span class="field-hint">Requested number of diverse low-energy candidates. If the search cannot find that many unique solutions, the returned family may be smaller. Web limit: 12.</span>
-            </label>
-            <label class="penetration-field" data-penetration-field="family">Penetration depth
-              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="family" />
-              <span class="field-hint">Current value: <strong data-range-value="family">50%</strong>. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <label>Optimization steps (classical simulated annealing)
-              <input name="steps" type="number" value="10000" min="1000" max="20000" step="1000" />
-              <span class="field-hint">Number of Monte Carlo mutation steps used in each annealing run. More steps generally help each candidate settle into a better low-energy sequence, but they also make family generation slower. Web limit: 20,000.</span>
-            </label>
-            <label>Restarts per candidate
-              <input name="restarts" type="number" value="6" min="1" max="20" />
-              <span class="field-hint">More restarts improve robustness but increase runtime. Web limit: 20.</span>
-            </label>
-            <div class="support-note">Need larger families or heavier searches? Please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
-            <div class="actions"><button type="submit">Generate family</button></div>
-          </form>
-          <div id="family-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-compare">
-          <div class="panel-head">
-            <h2>Compare Two Environments</h2>
-            <p>Quantify environmental selectivity and compare the same sequence across two target states.</p>
-          </div>
-          <form id="compare-form" class="tool-grid">
-            <label>Reference peptide
-              <select name="reference_peptide" class="reference-peptide-select" data-reference-scope="compare">
-                <option value="">Custom sequence</option>
-              </select>
-              <span class="field-hint">Curated literature-inspired reference helices. Selecting one fills the sequence automatically; the allowed residues must include all of its residues.</span>
-            </label>
-            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
-            <div class="reference-note hidden-field" data-reference-note="compare"></div>
-            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
-            <div></div>
-            <label>Environment A<select name="preset_a" class="env-preset" data-env-scope="compare_a">
-              <option value="homogeneous_polar" selected>Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg">Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Environment B<select name="preset_b" class="env-preset" data-env-scope="compare_b">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar" selected>Homogeneous apolar</option>
-              <option value="interfacial_neg">Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label class="penetration-field" data-penetration-field="compare_a">Penetration depth A
-              <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_a" />
-              <span class="field-hint">Current value: <strong data-range-value="compare_a">50%</strong>. Used only if environment A is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <label class="penetration-field" data-penetration-field="compare_b">Penetration depth B
-              <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="compare_b" />
-              <span class="field-hint">Current value: <strong data-range-value="compare_b">50%</strong>. Used only if environment B is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <div class="actions"><button type="submit">Compare environments</button></div>
-          </form>
-          <div id="compare-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-cross">
-          <div class="panel-head">
-            <h2>Cross-Environment Design</h2>
-            <p>Optimize a joint objective with a gap penalty to search for environmentally robust helical sequences.</p>
-          </div>
-          <form id="cross-form" class="tool-grid">
-            <label>Length
-              <input name="length" type="number" value="20" min="4" max="40" />
-              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
-            </label>
-            <label>Allowed residues<input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G" /></label>
-            <label>Environment A<select name="preset_a" class="env-preset" data-env-scope="cross_a">
-              <option value="homogeneous_polar" selected>Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg">Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label>Environment B<select name="preset_b" class="env-preset" data-env-scope="cross_b">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar" selected>Homogeneous apolar</option>
-              <option value="interfacial_neg">Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label class="penetration-field" data-penetration-field="cross_a">Penetration depth A
-              <input type="range" name="penetration_depth_a" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_a" />
-              <span class="field-hint">Current value: <strong data-range-value="cross_a">50%</strong>. Used only if environment A is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <label class="penetration-field" data-penetration-field="cross_b">Penetration depth B
-              <input type="range" name="penetration_depth_b" min="0" max="100" step="5" value="50" class="penetration-slider" data-range-output="cross_b" />
-              <span class="field-hint">Current value: <strong data-range-value="cross_b">50%</strong>. Used only if environment B is interfacial. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <label>Optimization steps (classical simulated annealing)
-              <input name="steps" type="number" value="16000" min="1000" max="60000" step="1000" />
-              <span class="field-hint">Number of Monte Carlo mutation steps in the joint simulated-annealing search. Larger values give the optimizer more chances to improve the sequence across both environments, but increase runtime. Web limit: 60,000.</span>
-            </label>
-            <label>λgap
-              <input name="lambda_gap" type="number" value="0.5" step="0.1" min="0" max="10" />
-              <span class="field-hint">Penalty applied when the same sequence behaves too differently in the two environments. Increase it to favor more balanced solutions. Web limit: 10.</span>
-            </label>
-            <label>Restarts
-              <input name="restarts" type="number" value="10" min="1" max="20" />
-              <span class="field-hint">Independent optimization runs from different starting points. Web limit: 20.</span>
-            </label>
-            <div class="support-note">For heavier cross-environment searches or custom campaigns, please contact <a href="https://simbios.usc.es/" target="_blank" rel="noopener noreferrer">SIMBIOS</a>.</div>
-            <div class="actions"><button type="submit">Run cross-design</button></div>
-          </form>
-          <div id="cross-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-specificity">
-          <div class="panel-head">
-            <h2>Specificity Design</h2>
-            <p>Design a helix that is favorable in one target environment while staying worse in a chosen set of competing off-target environments.</p>
-          </div>
-          <form id="specificity-form" class="tool-grid">
-            <label>Length
-              <input name="length" type="number" value="20" min="4" max="40" />
-              <span class="field-hint">Number of residues in the designed helix. Web limit: 40.</span>
-            </label>
-            <label>Allowed residues<input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V" /></label>
-            <label>Target environment<select name="target_preset" class="env-preset" data-env-scope="specificity_target">
-              <option value="homogeneous_polar">Homogeneous polar</option>
-              <option value="homogeneous_apolar">Homogeneous apolar</option>
-              <option value="interfacial_neg" selected>Interfacial anionic</option>
-              <option value="interfacial_neu">Interfacial neutral</option>
-              <option value="interfacial_pos">Interfacial cationic</option>
-            </select></label>
-            <label class="penetration-field" data-penetration-field="specificity_shared">Penetration depth
-              <input type="range" name="penetration_depth" min="0" max="100" step="5" value="25" class="penetration-slider" data-range-output="specificity_shared" />
-              <span class="field-hint">Current value: <strong data-range-value="specificity_shared">25%</strong>. Used as the common penetration depth for all interfacial target and off-target environments in this design. 0% is the homogeneous polar medium and 100% the homogeneous apolar medium; in between, the interfacial preset uses an apolar sector half-width of 40° + 1.1° per percent.</span>
-            </label>
-            <fieldset class="selector-group">
-              <legend>Competing off-target environments</legend>
-              <div class="selector-grid">
-                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_neu" checked /> <span>Interfacial neutral</span></label>
-                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_pos" checked /> <span>Interfacial cationic</span></label>
-                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="homogeneous_polar" checked /> <span>Homogeneous polar</span></label>
-                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="homogeneous_apolar" checked /> <span>Homogeneous apolar</span></label>
-                <label class="selector-option"><input type="checkbox" name="off_target_preset" value="interfacial_neg" /> <span>Interfacial anionic</span></label>
-              </div>
-              <div class="support-note specificity-explainer">The specificity target is <strong>L<sub>&lambda;</sub> = &lambda;H<sub>target</sub> + (1-&lambda;)(H<sub>target</sub> - min(H<sub>off-targets</sub>))</strong>. Lower values are better. Use <strong>&lambda; = 0</strong> for the hard one-vs-rest limit, and larger &lambda; values when you want to give progressively more weight to absolute target favorability.</div>
-            </fieldset>
-            <label>&lambda; balance between target affinity and specificity
-              <input type="range" name="lambda_balance" min="0" max="1" step="0.05" value="0" class="lambda-balance-slider" data-range-output="specificity_lambda" />
-              <span class="field-hint">Current value: <strong data-range-value="specificity_lambda">0.00</strong>. Smaller &lambda; emphasizes stricter selectivity; larger &lambda; favors absolute compatibility with the target environment.</span>
-            </label>
-            <label>Number of candidate sequences
-              <input name="num_sequences" type="number" value="10" min="1" max="10" />
-              <span class="field-hint">How many unique specificity candidates to recover in one run. The app will return a ranked table and let you inspect each candidate in detail below.</span>
-            </label>
-            <label>Optimization steps (classical simulated annealing)
-              <input name="steps" type="number" value="60000" min="1000" max="60000" step="1000" />
-              <span class="field-hint">Number of Monte Carlo mutation steps in the one-vs-rest simulated-annealing search. More steps increase the search budget and execution time. Web limit: 60,000.</span>
-            </label>
-            <label>Total restart budget
-              <input name="restarts" type="number" value="20" min="1" max="20" />
-              <span class="field-hint">Total number of annealing restarts allocated to the whole run. This budget is distributed across the requested candidate sequences, so asking for more candidates gives fewer restarts per candidate. Web limit: 20.</span>
-            </label>
-            <div class="support-note">This mode is useful for designing candidates that prefer one target state against several competing media, for example an anionic membrane against neutral/cationic interfaces plus homogeneous polar and apolar media.</div>
-            <div class="actions"><button type="submit">Run specificity design</button></div>
-          </form>
-          <div id="specificity-result" class="result"></div>
-        </section>
-
-        <section class="panel" id="panel-pdb">
-          <div class="panel-head">
-            <h2>Export Ideal Helix PDB</h2>
-            <p>Build an idealized alpha-helical PDB for a selected sequence and download or copy it.</p>
-          </div>
-          <form id="pdb-form" class="tool-grid">
-            <label>Sequence<textarea name="sequence" rows="3" maxlength="40">WFEKWEKEWKEFWKEWKDFW</textarea></label>
-            <div class="actions"><button type="submit">Generate PDB </button></div>
-          </form>
-          <div id="pdb-result" class="result"></div>
-        </section>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <div class="site-footer-inner">
-        <span>© 2026 Helix Design Studio contributors. Original code: MIT license.</span>
-        <div class="footer-stats" id="footer-stats" aria-live="polite">
-          <span class="visit-counter" id="visit-counter-total">Visits: —</span>
-          <span class="visit-counter" id="visit-counter-unique">Unique visitors: —</span>
-          <span class="visit-counter" id="visit-counter-runs">Runs: —</span>
-          <span class="visit-counter">Anonymous usage statistics are collected; a random identifier is stored in this browser.</span>
+     </div>
+     <div aria-label="Calculation results" class="result" id="score-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <circle cx="10" cy="10" r="6">
+        </circle>
+        <path d="m15 15 6 6M7 10h6m-3-3v6">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-penetration">
+     <div class="panel-head">
+      <p class="eyebrow">
+       ANALYZE
+      </p>
+      <h2 tabindex="-1">
+       Explore exposure
+      </h2>
+      <p>
+       Explore the balance between water-facing and non-polar-facing parts of your helix.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="penetration-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Your sequence
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Try a reference peptide
+          <select class="reference-peptide-select" data-reference-scope="penetration" name="reference_peptide">
+           <option value="">
+            Custom sequence
+           </option>
+          </select>
+          <span class="field-hint">
+           Choose an example to fill the sequence below.
+          </span>
+         </label>
+         <label>
+          Amino-acid sequence
+          <textarea aria-describedby="penetration-sequence-hint" autocapitalize="characters" maxlength="40" name="sequence" rows="2" spellcheck="false">WFEKWEKEWKEFWKEWKDFW</textarea>
+          <span class="field-hint" id="penetration-sequence-hint">
+           An example is ready. Replace it with your own one-letter amino-acid sequence (up to 40 residues).
+          </span>
+         </label>
+         <div class="reference-note hidden-field" data-reference-note="penetration">
+         </div>
         </div>
-      </div>
-    </footer>
-
-    <template id="loading-template"><div class="loading" role="status">Computing with the project Hamiltonian… </div></template>
-    <script src="/static/app.js?v=2"></script>
-  </body>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose an environment
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment
+          <select class="env-preset" data-env-scope="penetration_scan" name="preset">
+           <option selected="" value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <div class="scan-range-fixed">
+          <strong>
+           0%
+           <span aria-hidden="true">
+            ⟶
+           </span>
+           100%
+          </strong>
+          <span class="field-hint">
+           21 exposure settings, from water-like to non-polar.
+          </span>
+         </div>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V"/>
+         </label>
+         <label>
+          Random reference size
+          <input max="2000" min="100" name="n_random" step="100" type="number" value="400"/>
+          <span class="field-hint">
+           Background size used for each sampled penetration. Web limit: 2,000.
+          </span>
+         </label>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Scan exposure →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M3 7c3-5 6 5 9 0s6 5 9 0M3 17c3-5 6 5 9 0s6 5 9 0M12 3v18">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Explore exposure
+       </h3>
+       <p>
+        A profile across 21 exposure settings, with the lowest Z-score highlighted.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="penetration-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M3 7c3-5 6 5 9 0s6 5 9 0M3 17c3-5 6 5 9 0s6 5 9 0M12 3v18">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-design">
+     <div class="panel-head">
+      <p class="eyebrow">
+       DESIGN
+      </p>
+      <h2 tabindex="-1">
+       Design a peptide
+      </h2>
+      <p>
+       Choose a length and an environment. Find a sequence that fits.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="design-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Set your peptide
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Peptide length
+          <input max="40" min="4" name="length" type="number" value="20"/>
+          <span class="field-hint">
+           Number of amino acids, from 4 to 40.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose an environment
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment
+          <select class="env-preset" data-env-scope="design" name="preset">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option selected="" value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="design">
+          Non-polar exposure
+          <input class="penetration-slider" data-range-output="design" max="100" min="0" name="penetration_depth" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="design">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V"/>
+         </label>
+         <label>
+          Optimization steps (classical simulated annealing)
+          <input max="50000" min="1000" name="steps" step="1000" type="number" value="12000"/>
+          <span class="field-hint">
+           Number of Monte Carlo mutation steps used during the simulated-annealing search. Higher values let the optimizer test more sequence changes, usually improving exploration at the cost of longer runtime. Web limit: 50,000.
+          </span>
+         </label>
+         <label>
+          Restarts
+          <input max="20" min="1" name="restarts" type="number" value="8"/>
+          <span class="field-hint">
+           Independent annealing runs from different random starting points. Web limit: 20.
+          </span>
+         </label>
+         <div class="support-note">
+          Need heavier searches or custom large-scale runs? Please contact
+          <a href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">
+           SIMBIOS
+          </a>
+          .
+         </div>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Design sequence →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="m5 19 12-12 3 3L8 22zM15 3v3m6-1-2 2M4 5v4M2 7h4m13 9h3m-1-2v4">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Design a peptide
+       </h3>
+       <p>
+        One candidate sequence, its compatibility score, and a helical wheel.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="design-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="m5 19 12-12 3 3L8 22zM15 3v3m6-1-2 2M4 5v4M2 7h4m13 9h3m-1-2v4">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-family">
+     <div class="panel-head">
+      <p class="eyebrow">
+       DESIGN
+      </p>
+      <h2 tabindex="-1">
+       Create a family
+      </h2>
+      <p>
+       Explore several different sequences for the same environment.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="family-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Set your peptide
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Peptide length
+          <input max="40" min="4" name="length" type="number" value="20"/>
+          <span class="field-hint">
+           Number of amino acids, from 4 to 40.
+          </span>
+         </label>
+         <label>
+          Number of candidates
+          <input max="12" min="2" name="family_size" type="number" value="6"/>
+          <span class="field-hint">
+           Request 2–12 unique candidates. The search may return fewer.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose an environment
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment
+          <select class="env-preset" data-env-scope="family" name="preset">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option selected="" value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="family">
+          Non-polar exposure
+          <input class="penetration-slider" data-range-output="family" max="100" min="0" name="penetration_depth" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="family">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G"/>
+         </label>
+         <label>
+          Optimization steps (classical simulated annealing)
+          <input max="20000" min="1000" name="steps" step="1000" type="number" value="10000"/>
+          <span class="field-hint">
+           Number of Monte Carlo mutation steps used in each annealing run. More steps generally help each candidate settle into a better low-energy sequence, but they also make family generation slower. Web limit: 20,000.
+          </span>
+         </label>
+         <label>
+          Restarts per candidate
+          <input max="20" min="1" name="restarts" type="number" value="6"/>
+          <span class="field-hint">
+           More restarts improve robustness but increase runtime. Web limit: 20.
+          </span>
+         </label>
+         <div class="support-note">
+          Need larger families or heavier searches? Please contact
+          <a href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">
+           SIMBIOS
+          </a>
+          .
+         </div>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Generate family →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <rect height="7" rx="2" width="7" x="3" y="3">
+         </rect>
+         <rect height="7" rx="2" width="7" x="14" y="3">
+         </rect>
+         <rect height="7" rx="2" width="7" x="3" y="14">
+         </rect>
+         <rect height="7" rx="2" width="7" x="14" y="14">
+         </rect>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Create a family
+       </h3>
+       <p>
+        A set of unique candidates, each with scores and a helical wheel.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="family-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <rect height="7" rx="2" width="7" x="3" y="3">
+        </rect>
+        <rect height="7" rx="2" width="7" x="14" y="3">
+        </rect>
+        <rect height="7" rx="2" width="7" x="3" y="14">
+        </rect>
+        <rect height="7" rx="2" width="7" x="14" y="14">
+        </rect>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-compare">
+     <div class="panel-head">
+      <p class="eyebrow">
+       ANALYZE
+      </p>
+      <h2 tabindex="-1">
+       Compare environments
+      </h2>
+      <p>
+       One sequence, two environments. See how its scores change.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="compare-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Your sequence
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Try a reference peptide
+          <select class="reference-peptide-select" data-reference-scope="compare" name="reference_peptide">
+           <option value="">
+            Custom sequence
+           </option>
+          </select>
+          <span class="field-hint">
+           Choose an example to fill the sequence below.
+          </span>
+         </label>
+         <label>
+          Amino-acid sequence
+          <textarea aria-describedby="compare-sequence-hint" autocapitalize="characters" maxlength="40" name="sequence" rows="2" spellcheck="false">WFEKWEKEWKEFWKEWKDFW</textarea>
+          <span class="field-hint" id="compare-sequence-hint">
+           An example is ready. Replace it with your own one-letter amino-acid sequence (up to 40 residues).
+          </span>
+         </label>
+         <div class="reference-note hidden-field" data-reference-note="compare">
+         </div>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose environments
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment A
+          <select class="env-preset" data-env-scope="compare_a" name="preset_a">
+           <option selected="" value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label>
+          Environment B
+          <select class="env-preset" data-env-scope="compare_b" name="preset_b">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option selected="" value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="compare_a">
+          Non-polar exposure A
+          <input class="penetration-slider" data-range-output="compare_a" max="100" min="0" name="penetration_depth_a" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="compare_a">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+         <label class="penetration-field" data-penetration-field="compare_b">
+          Non-polar exposure B
+          <input class="penetration-slider" data-range-output="compare_b" max="100" min="0" name="penetration_depth_b" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="compare_b">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V"/>
+         </label>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Compare environments →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Compare environments
+       </h3>
+       <p>
+        Side-by-side scores and helical wheels for the same sequence.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="compare-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-cross">
+     <div class="panel-head">
+      <p class="eyebrow">
+       DESIGN
+      </p>
+      <h2 tabindex="-1">
+       Design for two environments
+      </h2>
+      <p>
+       Find a sequence with balanced compatibility across two environments.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="cross-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Set your peptide
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Peptide length
+          <input max="40" min="4" name="length" type="number" value="20"/>
+          <span class="field-hint">
+           Number of amino acids, from 4 to 40.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose environments
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Environment A
+          <select class="env-preset" data-env-scope="cross_a" name="preset_a">
+           <option selected="" value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label>
+          Environment B
+          <select class="env-preset" data-env-scope="cross_b" name="preset_b">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option selected="" value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="cross_a">
+          Non-polar exposure A
+          <input class="penetration-slider" data-range-output="cross_a" max="100" min="0" name="penetration_depth_a" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="cross_a">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+         <label class="penetration-field" data-penetration-field="cross_b">
+          Non-polar exposure B
+          <input class="penetration-slider" data-range-output="cross_b" max="100" min="0" name="penetration_depth_b" step="5" type="range" value="50"/>
+          <span class="field-hint">
+           <strong data-range-value="cross_b">
+            50%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+         <label>
+          Balance between environments (λgap)
+          <input max="10" min="0" name="lambda_gap" step="0.1" type="number" value="0.5"/>
+          <span class="field-hint">
+           Penalty applied when the same sequence behaves too differently in the two environments. Increase it to favor more balanced solutions. Web limit: 10.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,P,D,E,Q,L,M,F,K,S,T,W,Y,V,H,G"/>
+         </label>
+         <label>
+          Optimization steps (classical simulated annealing)
+          <input max="60000" min="1000" name="steps" step="1000" type="number" value="16000"/>
+          <span class="field-hint">
+           Number of Monte Carlo mutation steps in the joint simulated-annealing search. Larger values give the optimizer more chances to improve the sequence across both environments, but increase runtime. Web limit: 60,000.
+          </span>
+         </label>
+         <label>
+          Restarts
+          <input max="20" min="1" name="restarts" type="number" value="10"/>
+          <span class="field-hint">
+           Independent optimization runs from different starting points. Web limit: 20.
+          </span>
+         </label>
+         <div class="support-note">
+          For heavier cross-environment searches or custom campaigns, please contact
+          <a href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">
+           SIMBIOS
+          </a>
+          .
+         </div>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Design for both environments →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 4v4c0 5 16 3 16 8v4M4 20v-4c0-5 16-3 16-8V4m-3 3 3-3 3 3m-6 10 3 3 3-3">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Design for two environments
+       </h3>
+       <p>
+        One candidate with a score and helical wheel for each environment.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="cross-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="M4 4v4c0 5 16 3 16 8v4M4 20v-4c0-5 16-3 16-8V4m-3 3 3-3 3 3m-6 10 3 3 3-3">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-specificity">
+     <div class="panel-head">
+      <p class="eyebrow">
+       DESIGN
+      </p>
+      <h2 tabindex="-1">
+       Design for selectivity
+      </h2>
+      <p>
+       Find sequences that favor your target environment over competing environments.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="specificity-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Set your peptide
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Peptide length
+          <input max="40" min="4" name="length" type="number" value="20"/>
+          <span class="field-hint">
+           Number of amino acids, from 4 to 40.
+          </span>
+         </label>
+         <label>
+          Number of candidates
+          <input max="10" min="1" name="num_sequences" type="number" value="10"/>
+          <span class="field-hint">
+           Request 1–10 unique candidates.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          02
+         </span>
+         Choose environments
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Target environment
+          <select class="env-preset" data-env-scope="specificity_target" name="target_preset">
+           <option value="homogeneous_polar">
+            Water-like · polar
+           </option>
+           <option value="homogeneous_apolar">
+            Non-polar · apolar
+           </option>
+           <option selected="" value="interfacial_neg">
+            Membrane interface · negative
+           </option>
+           <option value="interfacial_neu">
+            Membrane interface · neutral
+           </option>
+           <option value="interfacial_pos">
+            Membrane interface · positive
+           </option>
+          </select>
+         </label>
+         <label class="penetration-field" data-penetration-field="specificity_shared">
+          Non-polar exposure
+          <input class="penetration-slider" data-range-output="specificity_shared" max="100" min="0" name="penetration_depth" step="5" type="range" value="25"/>
+          <span class="field-hint">
+           <strong data-range-value="specificity_shared">
+            25%
+           </strong>
+           · Angular exposure, not physical insertion depth.
+          </span>
+          <span class="range-endpoints">
+           <span>
+            Water-like · 0%
+           </span>
+           <span>
+            Non-polar · 100%
+           </span>
+          </span>
+         </label>
+         <fieldset class="selector-group">
+          <legend>
+           Environments to compare against
+          </legend>
+          <div class="selector-grid">
+           <label class="selector-option">
+            <input checked="" name="off_target_preset" type="checkbox" value="interfacial_neu"/>
+            <span>
+             Membrane interface · neutral
+            </span>
+           </label>
+           <label class="selector-option">
+            <input checked="" name="off_target_preset" type="checkbox" value="interfacial_pos"/>
+            <span>
+             Membrane interface · positive
+            </span>
+           </label>
+           <label class="selector-option">
+            <input checked="" name="off_target_preset" type="checkbox" value="homogeneous_polar"/>
+            <span>
+             Water-like · polar
+            </span>
+           </label>
+           <label class="selector-option">
+            <input checked="" name="off_target_preset" type="checkbox" value="homogeneous_apolar"/>
+            <span>
+             Non-polar · apolar
+            </span>
+           </label>
+           <label class="selector-option">
+            <input name="off_target_preset" type="checkbox" value="interfacial_neg"/>
+            <span>
+             Membrane interface · negative
+            </span>
+           </label>
+          </div>
+          <details class="inline-help">
+           <summary>
+            How is selectivity calculated?
+           </summary>
+           <div class="support-note specificity-explainer">
+            The specificity target is
+            <strong>
+             L
+             <sub>
+              λ
+             </sub>
+             = λH
+             <sub>
+              target
+             </sub>
+             + (1-λ)(H
+             <sub>
+              target
+             </sub>
+             - min(H
+             <sub>
+              off-targets
+             </sub>
+             ))
+            </strong>
+            . Lower values are better. Use
+            <strong>
+             λ = 0
+            </strong>
+            for the hard one-vs-rest limit, and larger λ values when you want to give progressively more weight to absolute target favorability.
+           </div>
+          </details>
+         </fieldset>
+         <label>
+          Selectivity balance (λ)
+          <input class="lambda-balance-slider" data-range-output="specificity_lambda" max="1" min="0" name="lambda_balance" step="0.05" type="range" value="0"/>
+          <span class="field-hint">
+           <strong data-range-value="specificity_lambda">
+            0.00
+           </strong>
+           · Lower favors selectivity; higher favors target compatibility.
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <details class="advanced-settings">
+        <summary>
+         <span>
+          Advanced settings
+         </span>
+         <small>
+          Optional · defaults are ready to use
+         </small>
+        </summary>
+        <div class="fields-grid">
+         <label>
+          Allowed residues
+          <input name="residues" value="A,R,N,D,C,Q,E,G,H,I,L,K,M,F,P,S,T,W,Y,V"/>
+         </label>
+         <label>
+          Optimization steps (classical simulated annealing)
+          <input max="60000" min="1000" name="steps" step="1000" type="number" value="60000"/>
+          <span class="field-hint">
+           Number of Monte Carlo mutation steps in the one-vs-rest simulated-annealing search. More steps increase the search budget and execution time. Web limit: 60,000.
+          </span>
+         </label>
+         <label>
+          Total restart budget
+          <input max="20" min="1" name="restarts" type="number" value="20"/>
+          <span class="field-hint">
+           Total number of annealing restarts allocated to the whole run. This budget is distributed across the requested candidate sequences, so asking for more candidates gives fewer restarts per candidate. Web limit: 20.
+          </span>
+         </label>
+         <div class="support-note">
+          This mode is useful for designing candidates that prefer one target state against several competing media, for example an anionic membrane against neutral/cationic interfaces plus homogeneous polar and apolar media.
+         </div>
+        </div>
+       </details>
+       <div class="actions">
+        <button type="submit">
+         Design selective sequences →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <circle cx="12" cy="12" r="9">
+         </circle>
+         <circle cx="12" cy="12" r="5">
+         </circle>
+         <circle cx="12" cy="12" r="1">
+         </circle>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Design for selectivity
+       </h3>
+       <p>
+        Ranked candidates, detailed comparisons, and CSV or JSON exports.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        Scores describe an assumed α-helix. Lower model energy means better compatibility within the same scoring setup.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="specificity-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <circle cx="12" cy="12" r="9">
+        </circle>
+        <circle cx="12" cy="12" r="5">
+        </circle>
+        <circle cx="12" cy="12" r="1">
+        </circle>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Choose your settings above, then start the calculation.
+       </small>
+      </span>
+     </div>
+    </section>
+    <section class="panel" id="panel-pdb">
+     <div class="panel-head">
+      <p class="eyebrow">
+       STRUCTURE
+      </p>
+      <h2 tabindex="-1">
+       Build a 3D helix
+      </h2>
+      <p>
+       Turn your sequence into an ideal α-helical model.
+      </p>
+     </div>
+     <div class="workspace-grid">
+      <form class="tool-grid" id="pdb-form">
+       <fieldset class="form-section">
+        <legend>
+         <span class="step-number">
+          01
+         </span>
+         Your sequence
+        </legend>
+        <div class="fields-grid">
+         <label>
+          Amino-acid sequence
+          <textarea aria-describedby="pdb-sequence-hint" autocapitalize="characters" maxlength="40" name="sequence" rows="2" spellcheck="false">WFEKWEKEWKEFWKEWKDFW</textarea>
+          <span class="field-hint" id="pdb-sequence-hint">
+           An example is ready. Replace it with your own one-letter amino-acid sequence (up to 40 residues).
+          </span>
+         </label>
+        </div>
+       </fieldset>
+       <div class="actions">
+        <button type="submit">
+         Build 3D helix →
+        </button>
+       </div>
+      </form>
+      <aside class="workflow-help">
+       <span class="help-illustration">
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="m12 3 9 5v9l-9 5-9-5V8zM3 8l9 5 9-5m-9 5v9M7 5l10 6">
+         </path>
+        </svg>
+       </span>
+       <p class="eyebrow">
+        WHAT YOU’LL GET
+       </p>
+       <h3>
+        Build a 3D helix
+       </h3>
+       <p>
+        An interactive 3D model and a downloadable PDB file.
+       </p>
+       <div class="help-divider">
+       </div>
+       <p class="help-small">
+        This is an ideal structure, not a folding prediction.
+       </p>
+       <button class="text-button" data-open-panel="guide" type="button">
+        Understand the model
+        <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+         <path d="M4 12h16m-6-6 6 6-6 6">
+         </path>
+        </svg>
+       </button>
+      </aside>
+     </div>
+     <div aria-label="Calculation results" class="result" id="pdb-result"></div>
+     <div class="empty-results">
+      <span class="empty-result-icon">
+       <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
+        <path d="m12 3 9 5v9l-9 5-9-5V8zM3 8l9 5 9-5m-9 5v9M7 5l10 6">
+        </path>
+       </svg>
+      </span>
+      <span>
+       <strong>
+        Your results will appear here
+       </strong>
+       <small>
+        Build your helix to explore it in 3D.
+       </small>
+      </span>
+     </div>
+    </section>
+   </section>
+  </main>
+  <footer class="site-footer">
+   <div class="site-footer-inner">
+    <img alt="" height="22" src="/static/assets/helix-environment-mark.png" width="22"/>
+    <span>
+     © 2026 Helix Design Studio contributors. Original code: MIT license.
+    </span>
+    <div aria-live="polite" class="footer-stats" id="footer-stats" style="display: none">
+     <span class="visit-counter" id="visit-counter-total">
+      Visits: —
+     </span>
+     <span class="visit-counter" id="visit-counter-unique">
+      Unique visitors: —
+     </span>
+     <span class="visit-counter" id="visit-counter-runs">
+      Runs: —
+     </span>
+     <span class="visit-counter">
+      Anonymous usage statistics are collected; a random identifier is stored in this browser.
+     </span>
+    </div>
+   </div>
+  </footer>
+  <template id="loading-template">
+   <div class="loading" role="status">
+    Calculating your results…
+   </div>
+  </template>
+  <script src="/static/app.js?v=2">
+  </script>
+  <script src="/static/interface.js?v=3">
+  </script>
+  <script src="/static/home-visual.js?v=1">
+  </script>
+ </body>
 </html>
