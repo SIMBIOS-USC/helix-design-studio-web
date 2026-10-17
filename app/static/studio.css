@@ -39,6 +39,15 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--focus-ring)
 .panel-head > p:last-child { font-size: 18px; line-height: 1.65; max-width: 830px; }
 .site-footer { font-size: 12px; color: var(--muted); }
 .site-footer-inner { gap: 12px; padding-top: 20px; }
+.footer-institutions { border-top: 1px solid var(--line); padding: 26px 0; }
+.footer-institutions-label { margin: 0 0 16px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+.footer-institution-links { display: flex; align-items: center; flex-wrap: wrap; gap: 24px 48px; }
+.footer-institution { display: inline-flex; align-items: center; gap: 14px; max-width: 100%; color: var(--ink); text-decoration: none; border-radius: 4px; }
+.footer-institution img { display: block; width: auto; height: 52px; flex: 0 0 auto; object-fit: contain; }
+.footer-institution > span { font-size: 14px; line-height: 1.6; }
+.footer-institution strong { display: block; font-size: 17px; letter-spacing: .2px; }
+.footer-institution span > span { display: block; color: var(--muted); font-size: 13px; }
+.footer-institution:hover > span { text-decoration: underline; text-underline-offset: 4px; }
 
 /* Home: restrained color, a readable illustration and a clear type hierarchy. */
 .welcome h1 { line-height: 1.16; }
@@ -275,6 +284,8 @@ pre.pdb { border-radius: 10px; background: #18372e; color: #edf4f0; font-size: 1
   .project-acknowledgements .about-card { padding: 22px; }
   .project-acknowledgements > h3 { font-size: 24px; }
   .site-footer { font-size: 12px; }
+  .footer-institutions { padding: 24px 0; }
+  .footer-institution-links { align-items: flex-start; gap: 22px; flex-direction: column; }
 }
 @media (max-width: 370px) {
   .content { padding: 24px 16px; }
