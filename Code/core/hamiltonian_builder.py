@@ -49,16 +49,23 @@ def hydrophobic_moment(sequence: Sequence[str]) -> Tuple[float, float]:
 
 
 RESOURCE_FILES = ("mj_matrix.txt", "helix_pairs_prop.txt", "helix_sd_i_3.txt", "helix_sd_i_4.txt")
+NEIGHBOR_SCORING_CONVENTION = "negative_m1_plus_m3_plus_m4"
+NEIGHBOR_MATRIX_WEIGHTS = {1: -1.0, 3: 1.0, 4: 1.0}
 
 
 def parameter_set_sha256() -> str:
-    """Huella del conjunto de parámetros (tablas y escalas por residuo), independiente del alfabeto."""
+    """Huella de tablas, escalas y convención de vecinos, independiente del alfabeto."""
     digest = hashlib.sha256()
     resources = os.path.join(os.path.dirname(__file__), "resources")
     for name in RESOURCE_FILES:
         with open(os.path.join(resources, name), "rb") as fh:
             digest.update(name.encode("utf-8") + b"\0" + fh.read())
-    scales = {"pace_scholtz": PACE_SCHOLTZ_HELIX_PROPENSITY, "fauchere_pliska": FAUCHERE_PLISKA_HYDROPHOBICITY}
+    scales = {
+        "pace_scholtz": PACE_SCHOLTZ_HELIX_PROPENSITY,
+        "fauchere_pliska": FAUCHERE_PLISKA_HYDROPHOBICITY,
+        "neighbor_score_convention": NEIGHBOR_SCORING_CONVENTION,
+        "neighbor_matrix_weights": NEIGHBOR_MATRIX_WEIGHTS,
+    }
     digest.update(json.dumps(scales, sort_keys=True).encode("utf-8"))
     return digest.hexdigest()
 
@@ -91,7 +98,7 @@ class HamiltonianBuilder:
         self.amino_acids = amino_acids
         self.n_aa = len(amino_acids)
         self.kwargs = kwargs
-        self.stats_cache_version = 4
+        self.stats_cache_version = 5
         self.align_phase = bool(kwargs.get('align_phase', False))
 
         # 1. Physicochemical properties
@@ -108,6 +115,8 @@ class HamiltonianBuilder:
     def _stats_cache_payload(self, n_decoys: int) -> Dict[str, Any]:
         return {
             "stats_cache_version": self.stats_cache_version,
+            "neighbor_score_convention": NEIGHBOR_SCORING_CONVENTION,
+            "neighbor_matrix_weights": NEIGHBOR_MATRIX_WEIGHTS,
             "L": self.L,
             "amino_acids": self.amino_acids,
             "n_decoys": int(n_decoys),
@@ -242,8 +251,9 @@ class HamiltonianBuilder:
     def _load_matrices_from_files(self):
         """Carga MJ y matrices de vecinos estadísticos k=1,3,4 en el orden del alfabeto."""
         self.mj_matrix = self._matrix_for_alphabet(*_load_energy_matrix_file())
-        # Eq. 3 of the method article sums the normalized neighbor matrices M^(1), M^(3), M^(4)
-        # directly; all three are added with their stored sign, with no per-matrix transformation.
+        # Keep the published coefficients intact. The neighbor score subtracts M1,
+        # so larger observed/expected helix propensities give a lower model score.
+        # M3/M4 retain their source energy signs (negative contributions are favorable).
         self.M1 = self._matrix_for_alphabet(*_load_first_neighbors_matrix_file())
         self.M3 = self._matrix_for_alphabet(*_load_third_neighbors_matrix_file())
         self.M4 = self._matrix_for_alphabet(*_load_fourth_neighbors_matrix_file())
@@ -262,6 +272,11 @@ class HamiltonianBuilder:
         digest = hashlib.sha256()
         for matrix in (self.mj_matrix, self.M1, self.M3, self.M4):
             digest.update(np.ascontiguousarray(matrix, dtype=np.float64).tobytes())
+        convention = {
+            "neighbor_score_convention": NEIGHBOR_SCORING_CONVENTION,
+            "neighbor_matrix_weights": NEIGHBOR_MATRIX_WEIGHTS,
+        }
+        digest.update(json.dumps(convention, sort_keys=True).encode("utf-8"))
         return digest.hexdigest()
 
     # ------------------------------------------------------------------
@@ -363,6 +378,7 @@ class HamiltonianBuilder:
         return total * scale
 
     def _raw_helix_neigh(self, seq: List[int]) -> float:
+        """Empirical neighbor score: -mean(M1) + mean(M3) + mean(M4)."""
         matrices = {1: self.M1, 3: self.M3, 4: self.M4}
         total = 0.0
         for k, matrix in matrices.items():
@@ -370,7 +386,7 @@ class HamiltonianBuilder:
                 continue
             scale = 1.0 / (self.L - k)
             for i in range(self.L - k):
-                total += matrix[seq[i], seq[i + k]] * scale
+                total += NEIGHBOR_MATRIX_WEIGHTS[k] * matrix[seq[i], seq[i + k]] * scale
         return total
 
     def raw_terms(self, seq: List[int]) -> Dict[str, float]:

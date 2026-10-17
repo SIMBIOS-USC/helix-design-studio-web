@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface supports sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Current version: 1.0.0rc5**, a release candidate for evaluation. Searches and sequence scoring use the same hydrophobic-moment alignment rule. The neighbor parameters are checked against the published source tables; the model adaptations are described below.
+**Current version: 1.0.0rc6**, a release candidate for evaluation. Searches and sequence scoring use the same hydrophobic-moment alignment rule. The neighbor score rewards larger helical pairing propensities through a negative M1 contribution. The published parameter tables and model adaptations are described below.
 
 ## Installation
 
@@ -13,7 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
-git checkout v1.0.0rc5
+git checkout v1.0.0rc6
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -37,17 +37,21 @@ The image runs as an unprivileged user and defines a health check. Set `PORT` to
 
 ## Reproducible calculations
 
-Download the complete JSON calculation records from the browser interface and retain them with reported results. Each record includes a `provenance` block with the software version, parameter-set checksum, complete request, seed protocol, and Python and NumPy versions. Scientific applications require calibration and reference sample sizes appropriate to the question. The residue alphabet order determines the random streams used for calibration and search. Changes between versions and their measured effects are listed in the [changelog](CHANGELOG.md).
+Download the complete JSON calculation records from the browser interface and retain them with reported results. Each record includes a `provenance` block with the software version, parameter-set checksum, complete request, seed protocol, and Python and NumPy versions. The parameter-set checksum identifies the raw tables, residue scales and neighbor-scoring convention. Scientific applications require calibration and reference sample sizes appropriate to the question. The residue alphabet order determines the random streams used for calibration and search. Changes between versions and their measured effects are listed in the [changelog](CHANGELOG.md).
 
 Check the software version in the downloaded record before comparing numerical results from the public server with a specified release. Technical documentation and local request examples for the backend are provided in [docs/API.md](docs/API.md).
+
+## Reproducing a calculation in the browser
+
+Each calculation panel provides Advanced settings for the calibration sample count and random seed. Interfacial calculations also accept an optional exact apolar-sector half-width in degrees; enter 90 to reproduce the standard half-plane geometry independently of the exposure slider. Exported records preserve these inputs. Changing the exposure slider clears the angle override; homogeneous polar/apolar endpoints retain their preset geometry.
 
 ## Model scope and limitations
 
 - Scores measure compatibility with an assumed alpha-helical state. They do not establish folding, binding, membrane insertion, biological activity or experimental stability.
 - In interfacial environments, every search proposal (Design, Family, Cross-Design and Specificity) and every scored sequence is rotated so that its own hydrophobic moment points to the center of the apolar sector. Calibration decoys and random reference sequences are oriented individually by the same rule. A sequence with a numerically zero moment retains the preset phase; rotation has no effect in homogeneous media. This alignment is a prescribed orientation rule, not a search for the angle that minimizes the complete Hamiltonian or a prediction of equilibrium membrane orientation.
 - Searches, rankings and specificity margins use this aligned Hamiltonian and its matching calibration and reference distributions. A residue substitution can change the orientation of the complete helix, so the environmental contributions depend on the whole sequence. Design results report the same score used during the search; the retained `design_geometry` field duplicates that score and records its actual orientation for compatibility with existing result readers.
-- The helix-neighbor term adds entries from the i,i+1, i,i+3 and i,i+4 tables with their stored signs, without transforming the individual matrices. For each separation k, the sum is divided by L−k; the three contributions are combined into one `helix_neigh` term and standardized together against calibration sequences. M1 is not standardized separately from M3/M4. This empirical scoring term combines dimensionless relative propensities with side-chain interaction parameters; its standardized value is not an absolute thermodynamic energy. All tables are indexed by residue label. Miyazawa–Jernigan contacts are counted between residues i and i+1…i+4.
-- M1 uses the 400 values in Nacar (2020), Figure 3. That source characterizes hydrogen-bonded n,n+4 pairs; reusing it at i,i+1 is an empirical model adaptation, not evidence for adjacent-residue pair propensities. Source columns identify the earlier carbonyl acceptor and rows the later amide donor. The runtime table is transposed so that rows identify residue i and columns residue i+1.
+- The helix-neighbor score is `−mean(M1) + mean(M3) + mean(M4)`, where the mean for separation k is over the L−k available sequence pairs. Larger M1 propensities therefore lower the minimized score; negative M3/M4 interaction contributions also lower it. The combined `helix_neigh` component is standardized against calibration sequences and given its configured component weight. The internal coefficients −1, +1 and +1 define a fixed empirical combination of dimensionless relative propensities and numerical side-chain interaction parameters expressed in kcal/mol. It is a dimensionless comparative descriptor after standardization, rather than an absolute thermodynamic energy. All tables are indexed by residue label. Miyazawa–Jernigan coefficients are applied to residues i and i+1…i+4.
+- M1 uses the 400 values in Nacar (2020), Figure 3. The odds ratios express enrichment of hydrogen-bonded n,n+4 pairs over a composition-based random background in globular proteins. A larger ratio indicates greater helical enrichment. The software subtracts these values in its empirical i,i+1 score; a zero entry contributes zero to that M1 sum. Reusing the source at i,i+1 remains a model adaptation rather than evidence for adjacent-residue pair propensities. Source columns identify the earlier carbonyl acceptor and rows the later amide donor. The runtime table is transposed so that rows identify residue i and columns residue i+1.
 - M3 and M4 use the 324 values per separation in Muñoz–Serrano (1994), Table 2, in kcal/mol. The published table contains 18 residues and omits Cys and Pro. The application assigns zero contribution to any M3/M4 pair containing Cys or Pro (76 additional entries per matrix); these are model defaults, not measured zero interactions. This convention does not remove the separate single-residue helix propensity for Pro.
 - The membrane-charge term acts only on water-facing residues of charged interfaces; it is zero in neutral interfaces and homogeneous media.
 - PDB export constructs an ideal helix; it does not predict or minimize a structure.
@@ -56,7 +60,7 @@ Check the software version in the downloaded record before comparing numerical r
 
 Source citations, axis definitions and the complete comparison procedure are given in [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance).
 
-The [1.0.0rc2 Table 1 rerun](tools/data/article_table1_comparison_1.0.0rc2.json) evaluates the seven exact sequence strings and fourteen rounded Z-scores of the published method article, using source-restored parameters and the declared calibration/reference protocol. Its mean and maximum absolute Z-score differences are 0.303771 and 0.439849. These historical measurements describe that release; they are a new execution rather than a reconstruction of the historical calculation settings. The [changelog](CHANGELOG.md) preserves the version-specific comparisons and explains the change to aligned search objectives in 1.0.0rc5. The source contains zero M1 entries, so the optional negative-log comparison is undefined without an additional model assumption; the default rerun uses direct entries.
+The [archived 1.0.0rc2 Table 1 rerun](tools/data/article_table1_comparison_1.0.0rc2.json) evaluates the seven exact sequence strings and fourteen rounded Z-scores of the published method article with the positive-M1 convention used by that release. Its mean and maximum absolute Z-score differences are 0.303771 and 0.439849. These historical measurements describe that specific release and rerun protocol. The [changelog](CHANGELOG.md) records the subsequent alignment and M1-scoring changes; archived numerical results must be associated with their recorded software version.
 
 ### Parameter table checksums
 
@@ -119,7 +123,7 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 - `Code/`: scoring, calibration and four parameter tables.
 - `tests/`, `examples/` and `docs/`: automated checks, API request examples, a Python client and the API guide.
 - `tools/measure_changes.py`: measures the numerical effect of each model change between versions, with a separate control that changes only the search random stream.
-- `tools/reproduce_article_table1.py` and `tools/data/`: retain the versioned comparison with the method article and its declared protocol.
+- `tools/reproduce_article_table1.py`: reruns the method article's Table 1 sequences with the current model. `--include-positive-m1` adds an explicitly labelled earlier-sign control; each variant records its formula, version and parameter checksum. The optional negative-log control rejects the published zeros without smoothing. `tools/data/` retains the separately versioned historical comparisons.
 - `tools/verify_parameter_sources.py` and `tools/data/parameter_sources/`: verify runtime neighbor parameters against the transcribed primary tables, with explicit source axes and model extensions.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.
 

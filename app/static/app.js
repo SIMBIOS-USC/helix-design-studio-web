@@ -276,13 +276,18 @@ function penetrationPercentToHalfWidth(percent) {
   return 40 + (clamped / 100) * 110;
 }
 
-function buildEnvironmentFromPresetAndPenetration(preset, penetrationPercent) {
+function buildEnvironmentFromPresetAndPenetration(preset, penetrationPercent, exactHalfWidth = null) {
   if (!isInterfacialPreset(preset)) return { preset };
   // Same mapping as the server-side penetration scan: the end points are the homogeneous media.
   const percent = Math.max(0, Math.min(100, Number(penetrationPercent ?? 50)));
   if (percent <= 0) return { preset: 'homogeneous_polar' };
   if (percent >= 100) return { preset: 'homogeneous_apolar' };
-  return { preset, wheel_halfwidth_deg: penetrationPercentToHalfWidth(percent) };
+  const halfWidth = exactHalfWidth === null || exactHalfWidth === undefined || exactHalfWidth === ''
+    ? penetrationPercentToHalfWidth(percent) : Number(exactHalfWidth);
+  if (!Number.isFinite(halfWidth) || halfWidth < 0 || halfWidth > 180) {
+    throw new Error('The apolar-sector half-width must be between 0 and 180 degrees.');
+  }
+  return { preset, wheel_halfwidth_deg: halfWidth };
 }
 
 function penetrationDescription(percent) {
@@ -294,7 +299,86 @@ function penetrationDescription(percent) {
 
 function buildEnvironmentFromFormData(fd, presetFieldName, penetrationFieldName) {
   const preset = fd.get(presetFieldName);
-  return buildEnvironmentFromPresetAndPenetration(preset, fd.get(penetrationFieldName) || 50);
+  return buildEnvironmentFromPresetAndPenetration(
+    preset, fd.get(penetrationFieldName) || 50, fd.get(`exact_halfwidth_${penetrationFieldName}`),
+  );
+}
+
+function calculationSettingsFromFormData(fd, defaultCalibration = 2000) {
+  const calibration = fd.get('n_decoys');
+  const seed = fd.get('seed');
+  const nDecoys = calibration === null || calibration === undefined || calibration === ''
+    ? defaultCalibration : Number(calibration);
+  const seedValue = seed === null || seed === undefined || seed === '' ? 42 : Number(seed);
+  if (!Number.isInteger(nDecoys) || nDecoys < 100 || nDecoys > 10000) {
+    throw new Error('The calibration sample size must be an integer between 100 and 10,000.');
+  }
+  if (!Number.isInteger(seedValue) || seedValue < 0 || seedValue > 4294967295) {
+    throw new Error('The random seed must be an integer between 0 and 4,294,967,295.');
+  }
+  return { n_decoys: nDecoys, seed: seedValue };
+}
+
+function calculationSettingsHtml(defaultCalibration, angles) {
+  return `
+    <label>Calibration sample size
+      <input type="number" name="n_decoys" min="100" max="10000" step="1" value="${defaultCalibration}" required>
+      <span class="field-hint">Random sequences used to standardize the score components before scoring or design. Keep this count unchanged when reproducing a calculation.</span>
+    </label>
+    <label>Random seed
+      <input type="number" name="seed" min="0" max="4294967295" step="1" value="42" required>
+      <span class="field-hint">Controls calibration, reference sampling and search. The same seed and settings reproduce the same calculation.</span>
+    </label>
+    ${angles.map(({ field, scope, preset, label }) => `
+      <label>${label}
+        <input type="number" name="exact_halfwidth_${field}" min="0" max="180" step="any" placeholder="Use exposure slider" data-exact-halfwidth data-penetration-name="${field}" data-exposure-scope="${scope}" data-preset-name="${preset}">
+        <span class="field-hint">Optional angle from the centre to the edge of the non-polar sector: 90° gives equal polar and non-polar angular sectors. It overrides intermediate exposure settings for interfacial media. Leave blank to use the slider; moving the slider clears the override. The 0% and 100% limits remain homogeneous media.</span>
+      </label>
+    `).join('')}
+  `;
+}
+
+function initializeCalculationSettings() {
+  const singleAngle = (scope, preset = 'preset') => [{
+    field: 'penetration_depth', scope, preset, label: 'Exact apolar-sector half-width (°)',
+  }];
+  const pairedAngles = (scope) => ['a', 'b'].map((side) => ({
+    field: `penetration_depth_${side}`, scope: `${scope}_${side}`, preset: `preset_${side}`,
+    label: `Exact apolar-sector half-width, environment ${side.toUpperCase()} (°)`,
+  }));
+  const configurations = [
+    ['score', 2000, singleAngle('score')],
+    ['design', 2000, singleAngle('design')],
+    ['family', 2000, singleAngle('family')],
+    ['specificity', 10000, singleAngle('specificity_shared', 'target_preset')],
+    ['compare', 2000, pairedAngles('compare')],
+    ['cross', 2000, pairedAngles('cross')],
+    ['penetration', 2000, []],
+  ];
+  configurations.forEach(([scope, calibration, angles]) => {
+    const grid = $(`#${scope}-form .advanced-settings .fields-grid`);
+    if (grid && !$('[name="n_decoys"]', grid)) {
+      grid.insertAdjacentHTML('beforeend', calculationSettingsHtml(calibration, angles));
+    }
+  });
+  $$('[data-exact-halfwidth]').forEach((input) => input.addEventListener('input', syncPenetrationControls));
+}
+
+function syncExactHalfWidthControls() {
+  $$('[data-exact-halfwidth]').forEach((input) => {
+    const form = input.closest('form');
+    const slider = $(`[name="${input.dataset.penetrationName}"]`, form);
+    const preset = $(`[name="${input.dataset.presetName}"]`, form);
+    const percent = Number(slider.value);
+    const hasInterface = isInterfacialPreset(preset.value)
+      || (form.id === 'specificity-form' && $$('input[name="off_target_preset"]', form)
+        .some((choice) => choice.checked && !choice.disabled && isInterfacialPreset(choice.value)));
+    input.disabled = !hasInterface || percent <= 0 || percent >= 100;
+    const display = $(`[data-range-value="${input.dataset.exposureScope}"]`);
+    if (display && !input.disabled && input.value !== '' && input.validity.valid) {
+      display.textContent = `Exact apolar half-width: ${Number(input.value)}°`;
+    }
+  });
 }
 
 function syncPenetrationControls() {
@@ -311,6 +395,7 @@ function syncPenetrationControls() {
     if (target) target.textContent = penetrationDescription(slider.value);
   });
   syncSpecificityControls();
+  syncExactHalfWidthControls();
 }
 
 function syncLambdaBalanceControls() {
@@ -360,8 +445,13 @@ $$('.nav-btn').forEach((btn) => btn.addEventListener('click', () => activatePane
 const initialPanelButton = $('.nav-btn.active');
 if (initialPanelButton) activatePanel(initialPanelButton);
 $$('.result').forEach((node) => node.setAttribute('aria-live', 'polite'));
+initializeCalculationSettings();
 $$('.env-preset').forEach((select) => select.addEventListener('change', syncPenetrationControls));
-$$('.penetration-slider').forEach((slider) => slider.addEventListener('input', syncPenetrationControls));
+$$('.penetration-slider').forEach((slider) => slider.addEventListener('input', () => {
+  const exact = $(`[name="exact_halfwidth_${slider.name}"]`, slider.closest('form'));
+  if (exact) exact.value = '';
+  syncPenetrationControls();
+}));
 $$('input[name="off_target_preset"]').forEach((checkbox) => checkbox.addEventListener('change', syncPenetrationControls));
 $$('.lambda-balance-slider').forEach((slider) => slider.addEventListener('input', syncLambdaBalanceControls));
 syncPenetrationControls();
@@ -1518,6 +1608,7 @@ function bindForm(formId, resultId, builder, renderer, onReset = null) {
 registerVisitCounter();
 
 bindForm('score-form', 'score-result', async (fd, signal) => postJSON('/api/score', {
+  ...calculationSettingsFromFormData(fd),
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),
@@ -1525,6 +1616,7 @@ bindForm('score-form', 'score-result', async (fd, signal) => postJSON('/api/scor
 }, { signal }), renderScore);
 
 bindForm('design-form', 'design-result', async (fd, signal) => postJSON('/api/design', {
+  ...calculationSettingsFromFormData(fd),
   length: Number(fd.get('length') || 20),
   residues: parseResidues(fd.get('residues')),
   environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),
@@ -1533,6 +1625,7 @@ bindForm('design-form', 'design-result', async (fd, signal) => postJSON('/api/de
 }, { signal }), renderScore);
 
 bindForm('compare-form', 'compare-result', async (fd, signal) => postJSON('/api/compare', {
+  ...calculationSettingsFromFormData(fd),
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment_a: buildEnvironmentFromFormData(fd, 'preset_a', 'penetration_depth_a'),
@@ -1540,6 +1633,7 @@ bindForm('compare-form', 'compare-result', async (fd, signal) => postJSON('/api/
 }, { signal }), renderCompare);
 
 bindForm('penetration-form', 'penetration-result', async (fd, signal) => postJSON('/api/optimal-penetration', {
+  ...calculationSettingsFromFormData(fd),
   sequence: fd.get('sequence'),
   residues: parseResidues(fd.get('residues')),
   environment: { preset: fd.get('preset') },
@@ -1550,6 +1644,7 @@ bindForm('penetration-form', 'penetration-result', async (fd, signal) => postJSO
 }, { signal }), renderOptimalPenetration);
 
 bindForm('cross-form', 'cross-result', async (fd, signal) => postJSON('/api/cross-design', {
+  ...calculationSettingsFromFormData(fd),
   length: Number(fd.get('length') || 20),
   residues: parseResidues(fd.get('residues')),
   environment_a: buildEnvironmentFromFormData(fd, 'preset_a', 'penetration_depth_a'),
@@ -1577,11 +1672,13 @@ specificityForm.addEventListener('submit', async (event) => {
   const targetPreset = String(fd.get('target_preset'));
   const sharedPenetration = Number(fd.get('penetration_depth') || 25);
   const selectedOffTargets = fd.getAll('off_target_preset').map((value) => String(value));
+  const exactHalfWidth = fd.get('exact_halfwidth_penetration_depth');
   const payload = {
+    ...calculationSettingsFromFormData(fd, 10000),
     length: Number(fd.get('length') || 20),
     residues: parseResidues(fd.get('residues')),
-    target_environment: buildEnvironmentFromPresetAndPenetration(targetPreset, sharedPenetration),
-    off_target_environments: selectedOffTargets.map((preset) => buildEnvironmentFromPresetAndPenetration(preset, sharedPenetration)),
+    target_environment: buildEnvironmentFromPresetAndPenetration(targetPreset, sharedPenetration, exactHalfWidth),
+    off_target_environments: selectedOffTargets.map((preset) => buildEnvironmentFromPresetAndPenetration(preset, sharedPenetration, exactHalfWidth)),
     num_sequences: Number(fd.get('num_sequences') || 10),
     lambda_balance: Number(fd.get('lambda_balance') || 0.0),
     steps: Number(fd.get('steps') || 60000),
@@ -1768,6 +1865,7 @@ familyForm.addEventListener('submit', async (event) => {
   setFormBusy(familyForm, true);
   const fd = new FormData(familyForm);
   const payload = {
+    ...calculationSettingsFromFormData(fd),
     length: Number(fd.get('length') || 20),
     residues: parseResidues(fd.get('residues')),
     environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),

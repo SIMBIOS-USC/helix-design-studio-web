@@ -15,6 +15,7 @@ const helperNames = [
   'formatObjectiveDelta', 'formatObjectiveDeltaCsv', 'energyUnitNote', 'errorHtml',
   'setFormBusy', 'parseResidues', 'buildEnvironmentFromFormData',
   'buildEnvironmentFromPresetAndPenetration', 'penetrationPercentToHalfWidth',
+  'calculationSettingsFromFormData',
 ];
 const helpers = helperNames.map((name) => {
   // Function bodies in app.js end with an unindented closing brace.
@@ -145,7 +146,7 @@ class Element {
   insertAdjacentHTML(_position, value) { this._html = value + this._html; }
 }
 
-function streamHarness(mode, runStream) {
+function streamHarness(mode, runStream, extraValues = {}) {
   const result = new Element();
   const form = new Element();
   const submit = new Element();
@@ -154,6 +155,7 @@ function streamHarness(mode, runStream) {
     length: '4', residues: 'A,E,K', steps: '10', restarts: '2', family_size: '3',
     preset: 'interfacial_neg', penetration_depth: '25', num_sequences: '3',
     target_preset: 'interfacial_neg', off_target_preset: ['homogeneous_polar'], lambda_balance: '0',
+    ...extraValues,
   };
   const document = { activeElement: null, querySelector: (selector) => {
     if (selector === `#${mode}-form`) return form;
@@ -183,6 +185,35 @@ function streamHarness(mode, runStream) {
 }
 
 for (const mode of ['family', 'specificity']) {
+  test(`${mode}: advanced settings reach the calculation and keep homogeneous competitors`, async () => {
+    let submitted;
+    const harness = streamHarness(mode, async ({ request }) => { submitted = request; }, {
+      n_decoys: '2000', seed: '0', exact_halfwidth_penetration_depth: '90',
+      off_target_preset: ['interfacial_neu', 'homogeneous_polar'],
+    });
+    await harness.form.dispatch('submit');
+    assert.equal(submitted.n_decoys, 2000);
+    assert.equal(submitted.seed, 0);
+    const target = mode === 'family' ? submitted.environment : submitted.target_environment;
+    assert.equal(target.wheel_halfwidth_deg, 90);
+    if (mode === 'specificity') {
+      assert.deepEqual(plain(submitted.off_target_environments), [
+        { preset: 'interfacial_neu', wheel_halfwidth_deg: 90 },
+        { preset: 'homogeneous_polar' },
+      ]);
+    }
+  });
+
+  test(`${mode}: absent advanced settings preserve existing sampling defaults`, async () => {
+    let submitted;
+    const harness = streamHarness(mode, async ({ request }) => { submitted = request; });
+    await harness.form.dispatch('submit');
+    assert.equal(submitted.n_decoys, mode === 'specificity' ? 10000 : 2000);
+    assert.equal(submitted.seed, 42);
+    const target = mode === 'family' ? submitted.environment : submitted.target_environment;
+    assert.equal(target.wheel_halfwidth_deg, 67.5);
+  });
+
   for (const ending of ['stop', 'error', 'eof']) {
     test(`${mode}: ${ending} keeps accepted results downloadable with canonical provenance`, async () => {
       const meta = provenance(mode);

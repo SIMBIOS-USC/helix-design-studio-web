@@ -44,6 +44,8 @@ From 1.0.0rc5, `design_geometry` is a compatibility copy of the containing score
 
 Alignment is a geometric scoring rule, not minimization of the complete Hamiltonian over rotation angle or a prediction of equilibrium orientation. Lower scores indicate better compatibility with the assumed helical state within the specified protocol. The scores are dimensionless comparisons and do not establish antimicrobial activity or membrane selectivity.
 
+In 1.0.0rc6, the neighbor component uses `−mean(M1) + mean(M3) + mean(M4)` before calibration and weighting. Each mean covers the L−k available sequence pairs at its separation. Larger Nacar helical pairing propensities therefore lower the model score, while M3/M4 retain their published energy signs. The raw tables are preserved. The convention `negative_m1_plus_m3_plus_m4` and its fixed internal coefficients are part of the parameter-set checksum and calibration-cache metadata; calibration statistics from the positive-M1 convention are recomputed.
+
 The Penetration endpoint scans 21 exposure settings in 5% increments. Zero percent is a homogeneous polar environment; 100% is a homogeneous apolar environment. Intermediate settings use an apolar-sector half-width of `40 + 1.1 × percent` degrees and the same hydrophobic-moment alignment rule. This percentage describes an **angular exposure mask**, not a physical insertion depth.
 
 ## Examples with curl

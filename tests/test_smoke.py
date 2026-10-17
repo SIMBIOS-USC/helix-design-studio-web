@@ -416,8 +416,8 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         residues = ["K", "P", "E", "A", "C", "L"]
         builder = self.engine.build_builder(6, residues, self.engine.resolve_environment(self.env_a), n_decoys=100)
         index = {aa: i for i, aa in enumerate(residues)}
-        # Values copied from the parameter tables in Code/core/resources. M1, M3 and M4 are
-        # summed directly, as in Eq. 3 of the method article (no per-matrix transformation).
+        # Stored values reproduce the published tables; the scoring convention
+        # subtracts M1 and adds M3/M4 after averaging each separation.
         self.assertAlmostEqual(builder.M1[index["A"], index["A"]], 2.734)
         self.assertAlmostEqual(builder.M1[index["K"], index["E"]], 2.264)
         self.assertAlmostEqual(builder.M3[index["E"], index["K"]], -0.150)
@@ -480,17 +480,16 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
         browser_scale = {aa: float(value) for aa, value in re.findall(r"([A-Z]):\s*(-?[0-9.]+)", block)}
         self.assertEqual(browser_scale, fauchere_pliska)
 
-    def test_helix_neighbor_term_sums_matrices_directly(self):
-        """Eq. 3 of the method article sums M^(1), M^(3), M^(4) directly (no per-matrix
-        transform); each separation k is averaged over its (L - k) pairs."""
+    def test_helix_neighbor_term_uses_negative_m1_and_source_energy_signs(self):
+        """Subtract mean M1 and add mean M3/M4, retaining the published raw tables."""
         env = self.engine.resolve_environment(self.env_b)
         residues = ["A", "E", "G", "L", "P"]
         builder = self.engine.build_builder(10, residues, env, n_decoys=100)
         codes = self.engine.seq_to_codes("AEGLPAEGLP", residues)
         expected = 0.0
-        for k, matrix in ((1, builder.M1), (3, builder.M3), (4, builder.M4)):
+        for k, matrix, sign in ((1, builder.M1, -1), (3, builder.M3, 1), (4, builder.M4, 1)):
             pairs = [matrix[codes[i], codes[i + k]] for i in range(len(codes) - k)]
-            expected += sum(pairs) / (len(codes) - k)
+            expected += sign * sum(pairs) / (len(codes) - k)
         self.assertAlmostEqual(builder._raw_helix_neigh(codes), expected, places=12)
         # M1 holds the raw propensity values from the file, not a logarithm of them.
         self.assertAlmostEqual(builder.M1[residues.index("A"), residues.index("A")], 2.734)

@@ -1,7 +1,8 @@
 """Rescore the exact sequence strings and Z-scores of the method article's Table 1.
 
 This is a specified rerun with current software, not a reconstruction of the historical
-calculation. The bundled input records its manuscript source and transcription checksums.
+calculation. Optional scoring controls are identified separately from the current model.
+The bundled input records its manuscript source and transcription checksums.
 
     python tools/reproduce_article_table1.py --output article_table1_comparison.json
 """
@@ -40,18 +41,59 @@ def source_fingerprints():
 
 @contextlib.contextmanager
 def m1_convention(model, convention):
-    original = model.HamiltonianBuilder._load_matrices_from_files
-    def load(self):
-        original(self)
-        if convention == "negative_log":
-            if not np.all(np.isfinite(self.M1) & (self.M1 > 0)):
-                raise ValueError("The negative-log comparison requires finite positive M1 entries")
-            self.M1 = -np.log(self.M1)
-    model.HamiltonianBuilder._load_matrices_from_files = load
+    """Apply an explicit, isolated scoring control and restore the current model."""
+    validate_m1_convention(model, convention)
+    original_loader = model.HamiltonianBuilder._load_matrices_from_files
+    original_weights = model.NEIGHBOR_MATRIX_WEIGHTS
+    original_convention = model.NEIGHBOR_SCORING_CONVENTION
     try:
+        if convention != "current":
+            model.NEIGHBOR_MATRIX_WEIGHTS = {**original_weights, 1: 1.0}
+            model.NEIGHBOR_SCORING_CONVENTION = (
+                "positive_m1_plus_m3_plus_m4" if convention == "positive_m1"
+                else "negative_log_m1_plus_m3_plus_m4"
+            )
+        if convention == "negative_log":
+            def load(self):
+                original_loader(self)
+                self.M1 = -np.log(self.M1)
+            # Add -ln(M1) with coefficient +1; subtracting it would invert the control.
+            model.HamiltonianBuilder._load_matrices_from_files = load
         yield
     finally:
-        model.HamiltonianBuilder._load_matrices_from_files = original
+        model.HamiltonianBuilder._load_matrices_from_files = original_loader
+        model.NEIGHBOR_MATRIX_WEIGHTS = original_weights
+        model.NEIGHBOR_SCORING_CONVENTION = original_convention
+
+
+def validate_m1_convention(model, convention):
+    if convention not in {"current", "positive_m1", "negative_log"}:
+        raise ValueError(f"Unknown scoring convention: {convention}")
+    if convention == "negative_log":
+        source, _ = model._load_first_neighbors_matrix_file()
+        if not np.all(np.isfinite(source) & (source > 0)):
+            raise ValueError(
+                "The negative-log control requires finite, strictly positive M1 source entries; "
+                "the published table contains zeros. No pseudocount or smoothing is applied."
+            )
+
+
+def convention_metadata(model, convention):
+    coefficients = {f"M{k}": value for k, value in model.NEIGHBOR_MATRIX_WEIGHTS.items()}
+    terms = [
+        f"{value:+g}*mean(-ln(M1))" if k == 1 and convention == "negative_log"
+        else f"{value:+g}*mean(M{k})"
+        for k, value in model.NEIGHBOR_MATRIX_WEIGHTS.items()
+    ]
+    return {
+        "neighbor_score_convention": model.NEIGHBOR_SCORING_CONVENTION,
+        "neighbor_matrix_weights": coefficients,
+        "m1_transformation": "negative_log" if convention == "negative_log" else "identity",
+        "neighbor_formula": " ".join(terms),
+        "formula_operands": "M1, M3 and M4 in the formula refer to the stored source coefficients",
+        "control_override": convention != "current",
+        "parameters_sha256": model.parameter_set_sha256(),
+    }
 
 
 def main():
@@ -62,7 +104,9 @@ def main():
     parser.add_argument("--n-random", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--include-negative-log", action="store_true",
-                        help="Also evaluate -ln(M1); requires a strictly positive parameter matrix")
+                        help="Also add mean(-ln(M1)) as a control; rejects zeros without smoothing")
+    parser.add_argument("--include-positive-m1", action="store_true",
+                        help="Also add mean(M1), the earlier scoring convention, as a controlled comparison")
     args = parser.parse_args()
     if args.n_decoys < 2 or args.n_random < 2 or not 0 <= args.seed <= 2**32 - 1:
         parser.error("Sample sizes must be at least 2 and seed must be between 0 and 2**32-1")
@@ -91,6 +135,14 @@ def main():
         from app import engine
         from app.main import APP_VERSION
         from core import hamiltonian_builder as model
+        conventions = ["current"]
+        if args.include_positive_m1:
+            conventions.append("positive_m1")
+        if args.include_negative_log:
+            conventions.append("negative_log")
+        # Reject undefined optional transforms before any scoring runs are performed.
+        for convention in conventions:
+            validate_m1_convention(model, convention)
         report = {
             "comparison": "Current software using exact method-article Table 1 sequence strings",
             "software_version": APP_VERSION,
@@ -99,20 +151,22 @@ def main():
             "notes": inputs["notes"],
             "source_files_sha256": sources,
             "parameters_sha256": model.parameter_set_sha256(),
+            "current_scoring_convention": convention_metadata(model, "current"),
             "runtime": {"python": platform.python_version(), "numpy": np.__version__},
             "protocol": {"alphabet": ALPHABET, "environments": PRESETS, "weights": WEIGHTS,
                          "n_decoys": args.n_decoys, "n_random": args.n_random, "seed": args.seed,
                          "calibration_seed_entropy": [args.seed], "reference_seed_entropy": engine.rng_seed(args.seed, engine.REFERENCE_STREAM),
                          "seed_protocol": engine.SEED_PROTOCOL, "mj_max_distance": engine.MJ_MAX_DISTANCE,
-                         "neighbor_normalization": "M1, M3 and M4 contributions are summed, then the combined helix_neigh term is standardized",
-                         "comparison_scope": ("Only the M1 transformation differs; calibration is recomputed with the same random sequences for each convention"
-                                              if args.include_negative_log else
-                                              "Direct-coefficient rerun with source-restored parameters; deviations from published scores do not reconstruct their historical calculation protocol")},
+                         "neighbor_normalization": "Average each separation over L-k pairs, apply its declared internal coefficient, then standardize the combined helix_neigh term",
+                         "comparison_scope": ("Only the declared M1 scoring convention differs between controls; calibration is recomputed using the same random sequences. These are current-engine controls, not complete reconstructions of historical software."
+                                              if len(conventions) > 1 else
+                                              "Current-model rerun; deviations from published scores do not reconstruct their historical calculation protocol")},
             "variants": {},
         }
-        for convention in (("direct", "negative_log") if args.include_negative_log else ("direct",)):
+        for convention in conventions:
             records = []
             with m1_convention(model, convention):
+                metadata = convention_metadata(model, convention)
                 for peptide in inputs["peptides"]:
                     for preset in PRESETS:
                         result = engine.score_sequence(peptide["sequence"], {"preset": preset}, ALPHABET,
@@ -124,7 +178,8 @@ def main():
                                         "environment": preset, "published_z": expected,
                                         "computed_z": result["z_score"], "delta_z": result["z_score"] - expected})
             differences = np.array([row["delta_z"] for row in records])
-            report["variants"][convention] = {"rows": records, "mean_absolute_delta_z": float(np.abs(differences).mean()),
+            report["variants"][convention] = {**metadata, "software_version": APP_VERSION,
+                                               "rows": records, "mean_absolute_delta_z": float(np.abs(differences).mean()),
                                                "max_absolute_delta_z": float(np.abs(differences).max()),
                                                "root_mean_square_delta_z": float(np.sqrt(np.mean(differences**2)))}
         if source_fingerprints() != sources or model.parameter_set_sha256() != report["parameters_sha256"]:

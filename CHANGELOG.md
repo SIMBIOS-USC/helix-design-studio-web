@@ -1,6 +1,21 @@
 # Changelog
 
-Use `v0.1.0` for the original comparison baseline, `v1.0.0rc2` for the source-corrected parameter set, `v1.0.0rc4` for the last release with fixed-phase search objectives, and `v1.0.0rc5` for the current release with aligned search objectives. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+Use `v0.1.0` for the original comparison baseline, `v1.0.0rc2` for the source-corrected parameter tables, `v1.0.0rc4` for the last release with fixed-phase search objectives, `v1.0.0rc5` for aligned searches with positive M1, and `v1.0.0rc6` for aligned searches with the corrected negative M1 contribution. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
+
+## 1.0.0rc6 — 2026-10-17
+
+### Helical pairing propensity in the minimized score
+
+- The raw neighbor score is now `−mean(M1) + mean(M3) + mean(M4)`. Nacar (2020), Figure 3, defines M1 as observed/expected helical-pair enrichment: larger values indicate greater enrichment. Its negative contribution now rewards that enrichment in the minimized score. Earlier releases added M1 positively, opposing this intended contribution.
+- The 400 M1 source values, their axis mapping and their empirical reuse at sequence separation i,i+1 are preserved. The source itself measures hydrogen-bonded n,n+4 pairs in globular proteins. A source zero contributes zero to the M1 sum. The M3/M4 coefficients and their negative-is-favorable energy convention are unchanged.
+- The three separation means retain fixed internal coefficients −1, +1 and +1 and are standardized as one component. This combination is an empirical descriptor with fixed internal scaling across heterogeneous source quantities; it does not constitute a conversion of M1 into thermodynamic energies. Other component equations and configured weights are unchanged.
+- Calibration-cache format advances to 5. The explicit convention `negative_m1_plus_m3_plus_m4` and internal coefficients enter cache metadata, matrix fingerprints and the public parameter-set checksum. Raw table checksums are unchanged, while the parameter-set checksum distinguishes the scoring change. Cached calibrations from the positive-M1 convention are not reused.
+- Sequence scores, random-reference distributions, search results and derived rankings must be recalculated for this release. A fixed seed alone does not preserve search trajectories when the scoring convention changes. Historical comparison files remain associated with their recorded release and inputs.
+- Regression checks cover the direction of the M1 reward, source zeros, the preserved M3/M4 signs, calibration-cache separation and exact agreement with all published matrix entries.
+- The Table 1 rerun tool identifies the current formula and optional positive-M1 control separately, with per-variant provenance. Its optional negative-log control adds `−ln(M1)` with the correct sign and explicitly rejects source zeros without pseudocounts. Archived numerical JSON reports are preserved under their original release conventions.
+
+- Browser Advanced settings now expose calibration count, seed and an exact interfacial half-width, preserving previous defaults. These controls allow the documented calculation protocols to be entered directly.
+- Specificity progress events now pair the displayed objective with the selected candidate; final selection and objective formulas are unchanged.
 
 ## 1.0.0rc5 — 2026-10-15
 

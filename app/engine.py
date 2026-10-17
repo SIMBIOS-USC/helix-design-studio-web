@@ -720,13 +720,12 @@ def _iter_specificity_search(
 
             if (step_idx + 1) % checkpoint == 0 or step_idx + 1 == steps:
                 overall = (restart_idx + (step_idx + 1) / max(1, steps)) / max(1, restarts)
-                best_sequence_codes = (
-                    best_codes
-                    if best_codes is not None and best_penalized_objective <= local_best_penalized_objective
-                    else local_best
+                use_previous_best = (
+                    best_codes is not None and best_penalized_objective <= local_best_penalized_objective
                 )
+                best_sequence_codes = best_codes if use_previous_best else local_best
                 best_sequence = codes_to_seq(best_sequence_codes, amino_acids)
-                best_obj = min(best_objective, local_best_objective)
+                best_obj = best_objective if use_previous_best else local_best_objective
                 progress_payload = {
                     "phase": "annealing",
                     "restart": restart_idx + 1,
