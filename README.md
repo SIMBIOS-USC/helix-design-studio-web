@@ -24,6 +24,8 @@ On Windows, activate the environment with `.venv\Scripts\activate`.
 
 Open **http://127.0.0.1:8000**. The interface includes a Guide and examples. The first calculation for a calibration configuration samples random sequences and caches the component statistics for subsequent requests.
 
+Opening `app/static/index.html` directly redirects to this local address. Keep the server running on port 8000; calculations require the server.
+
 ## Docker
 
 ```bash
