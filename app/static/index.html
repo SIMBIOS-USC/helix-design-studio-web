@@ -3,14 +3,15 @@
  <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <script src="../static/local-entry.js"></script>
   <title>
    Helix Design Studio
   </title>
-  <link href="/static/assets/helix-environment-mark.png" rel="icon" type="image/png"/>
+  <link href="/static/assets/helix-membrane-horizontal.png" rel="icon" type="image/png"/>
   <link href="/static/styles.css?v=7" rel="stylesheet"/>
   <link href="/static/funding.css?v=1" rel="stylesheet"/>
   <link href="/static/about.css?v=2" rel="stylesheet"/>
-  <link href="/static/studio.css?v=3" rel="stylesheet"/>
+  <link href="/static/studio.css?v=4" rel="stylesheet"/>
   <script defer="" src="/static/3Dmol-min.js?v=2.4.2">
   </script>
  </head>
@@ -24,7 +25,7 @@
    </button>
    <button aria-label="Helix Design Studio — overview" class="brand" data-open-panel="home" type="button">
     <span class="brand-mark">
-     <img alt="" class="brand-logo" height="52" src="/static/assets/helix-environment-mark.png" width="52"/>
+     <img alt="" class="brand-logo" height="52" src="/static/assets/helix-membrane-horizontal.png" width="52"/>
     </span>
     <span>
      Helix
@@ -45,12 +46,12 @@
       ↗
      </span>
     </a>
-    <button class="help-button" data-open-panel="guide" type="button">
+    <button aria-controls="panel-guide" aria-label="Behind the model" class="help-button" data-open-panel="guide" type="button">
      <svg aria-hidden="true" class="icon" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" viewbox="0 0 24 24" width="20">
       <path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1zm0 0v15">
       </path>
      </svg>
-     Quick guide
+     Behind the model
     </button>
    </div>
   </header>
@@ -177,7 +178,7 @@
         </path>
        </svg>
        <span>
-        Guide &amp; concepts
+        Behind the model
        </span>
       </button>
       <button aria-controls="panel-about" class="nav-btn" data-panel="about" type="button">
@@ -815,7 +816,7 @@
       <header class="about-introduction">
        <p class="eyebrow">THE SOFTWARE &amp; THE SCIENCE</p>
        <div class="about-title-row">
-        <img src="/static/assets/helix-environment-mark.png" alt="" width="70" height="70"/>
+        <img src="/static/assets/helix-membrane-horizontal.png" alt="" width="70" height="70"/>
         <h2 id="about-page-title" tabindex="-1">About Helix Design Studio</h2>
        </div>
        <p class="about-purpose">Explore how a peptide sequence fits different environments, or design new candidates for the environment you choose.</p>
@@ -892,10 +893,10 @@
        A LITTLE GUIDANCE
       </p>
       <h2 tabindex="-1">
-       Understand your results
+       Behind the model
       </h2>
       <p>
-       Start with the essentials. Open any topic when you want the details.
+       Understand the model, explore the concepts and interpret your results. Open any topic for more detail.
       </p>
      </div>
      <div class="guide-essentials">
@@ -2599,8 +2600,21 @@
    </section>
   </main>
   <footer class="site-footer">
+   <div class="footer-institutions">
+    <p class="footer-institutions-label">Developed by</p>
+    <div class="footer-institution-links">
+     <a class="footer-institution" href="https://simbios.usc.es/" rel="noopener noreferrer" target="_blank">
+      <img src="/static/assets/simbios-logo.png" alt="" width="52" height="52"/>
+      <span><strong>SIMBIOS</strong><span>Simulating life. Atom by atom.</span></span>
+     </a>
+     <a class="footer-institution footer-institution-usc" href="https://www.usc.gal/" rel="noopener noreferrer" target="_blank">
+      <img src="/static/assets/logo_USC.gif" alt="USC" width="59" height="52"/>
+      <span>Universidade de<br/>Santiago de Compostela</span>
+     </a>
+    </div>
+   </div>
    <div class="site-footer-inner">
-    <img alt="" height="22" src="/static/assets/helix-environment-mark.png" width="22"/>
+    <img alt="" height="22" src="/static/assets/helix-membrane-horizontal.png" width="22"/>
     <span>
      © 2026 Helix Design Studio contributors. Original code: MIT license.
     </span>
