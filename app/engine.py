@@ -151,6 +151,12 @@ def resolve_environment(environment: Optional[Dict[str, Any]]) -> Dict[str, Any]
     environment = environment or {}
     preset = environment.get("preset", "interfacial_neg")
     base = dict(ENVIRONMENT_PRESETS.get(preset, ENVIRONMENT_PRESETS["interfacial_neg"]))
+    if preset in ("homogeneous_polar", "homogeneous_apolar"):
+        for key in ("wheel_halfwidth_deg", "membrane_charge"):
+            if environment.get(key) is not None and environment[key] != base[key]:
+                raise ValueError(
+                    f"{preset} requires {key}={base[key]}. Choose an interfacial preset for a partial sector or membrane charge."
+                )
     for key in ("wheel_phase_deg", "wheel_halfwidth_deg", "membrane_charge"):
         if environment.get(key) is not None:
             base[key] = environment[key]
@@ -850,7 +856,7 @@ def design_family(
     steps: int = 10000,
     restarts: int = 6,
     family_size: int = 8,
-    oversample_factor: int = 3,
+    oversample_factor: int = 4,
     seed: int = 42,
 ) -> Dict[str, Any]:
     final_update = None
@@ -882,9 +888,12 @@ def design_family_stream(
     steps: int = 10000,
     restarts: int = 6,
     family_size: int = 8,
-    oversample_factor: int = 3,
+    oversample_factor: int = 4,
     seed: int = 42,
 ) -> Generator[Dict[str, Any], None, None]:
+    if (not isinstance(family_size, int) or not isinstance(oversample_factor, int)
+            or family_size < 1 or oversample_factor < 1):
+        raise ValueError("family_size and oversample_factor must be positive integers.")
     amino_acids = normalize_residues(residues)
     env = resolve_environment(environment)
     w = normalize_weights(weights)
@@ -893,7 +902,7 @@ def design_family_stream(
 
     unique_results: Dict[str, Dict[str, Any]] = {}
     accepted_codes: List[List[int]] = []
-    total_runs = max(family_size * max(oversample_factor, 4), family_size + 6)
+    total_runs = family_size * oversample_factor
     min_distance = max(2, math.ceil(length * 0.15))
     penalty_weight = 6.0
 
@@ -902,6 +911,7 @@ def design_family_stream(
         "payload": {
             "target": family_size,
             "total_runs_budget": total_runs,
+            "oversample_factor": oversample_factor,
             "min_distance": min_distance,
             "environment": env,
         },
@@ -966,6 +976,7 @@ def design_family_stream(
             "restarts": restarts,
             "seed": seed,
             "oversample_factor": oversample_factor,
+            "total_runs_budget": total_runs,
             "min_distance": min_distance,
             "penalty_weight": penalty_weight,
         },

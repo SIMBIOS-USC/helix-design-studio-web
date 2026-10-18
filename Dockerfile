@@ -13,6 +13,8 @@ COPY app ./app
 COPY Code ./Code
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY LICENSES ./LICENSES
+RUN mkdir -p /tmp/helix-cache /tmp/helix-usage \
+    && chown 10001:10001 /tmp/helix-cache /tmp/helix-usage
 USER helix
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

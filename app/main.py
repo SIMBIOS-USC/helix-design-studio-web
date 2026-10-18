@@ -23,6 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+from starlette.background import BackgroundTask
+from starlette.types import Receive, Scope, Send
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .engine import (
@@ -44,6 +46,7 @@ from .engine import (
     generate_helix_pdb,
     optimize_penetration,
     physical_environment_key,
+    resolve_environment,
     score_sequence,
 )
 from core.hamiltonian_builder import parameter_set_sha256  # noqa: E402  (ruta añadida por .engine)
@@ -122,7 +125,7 @@ class RequestLimitsMiddleware:
         await self.app(scope, limited_receive, secured_send)
 
 
-APP_VERSION = "1.0.0rc6"
+APP_VERSION = "1.0.0rc7"
 PARAMETERS_SHA256 = parameter_set_sha256()
 
 app = FastAPI(title="Helix Design Studio", version=APP_VERSION)
@@ -527,6 +530,11 @@ class EnvironmentConfig(RequestModel):
             raise ValueError(f"membrane_charge must be one of: {', '.join(MEMBRANE_CHARGES)}.")
         return value
 
+    @model_validator(mode="after")
+    def validate_preset_overrides(self) -> "EnvironmentConfig":
+        resolve_environment(self.model_dump())
+        return self
+
 
 class WeightsConfig(RequestModel):
     lambda_env: float = _weight_field("lambda_env")
@@ -622,7 +630,7 @@ class FamilyDesignRequest(RequestModel):
     steps: int = Field(default=10000, ge=1000, le=MAX_FAMILY_STEPS)
     restarts: int = Field(default=6, ge=1, le=MAX_RESTARTS)
     family_size: int = Field(default=8, ge=2, le=MAX_FAMILY_SIZE)
-    oversample_factor: int = Field(default=3, ge=1, le=MAX_OVERSAMPLE_FACTOR)
+    oversample_factor: int = Field(default=4, ge=1, le=MAX_OVERSAMPLE_FACTOR)
     seed: int = _seed_field()
 
     @field_validator("residues")
@@ -862,14 +870,25 @@ def _stream_calculation(
     updates: Callable[[], Iterator[Dict[str, Any]]],
     summary: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> StreamingResponse:
+    # Admission happens before the response headers, so busy requests receive HTTP 503.
+    if not _job_slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail=BUSY_MSG)
+
+    release_lock = threading.Lock()
+    slot_released = False
+
+    def release_slot() -> None:
+        nonlocal slot_released
+        with release_lock:
+            if not slot_released:
+                _job_slots.release()
+                slot_released = True
+
     async def generate() -> AsyncIterator[str]:
         started = time.perf_counter()
-        if not _job_slots.acquire(blocking=False):
-            yield json.dumps({"type": "error", "detail": BUSY_MSG}) + "\n"
-            return
         cancelled = threading.Event()
         limits = CalculationLimits(deadline=time.monotonic() + MAX_JOB_SECONDS, cancelled=cancelled)
-        iterator = updates()
+        iterator = None
 
         def step() -> Optional[Dict[str, Any]]:
             # Cada paso se ejecuta en un hilo del pool con los límites de esta petición.
@@ -878,6 +897,7 @@ def _stream_calculation(
 
         final_payload: Dict[str, Any] = {}
         try:
+            iterator = updates()
             provenance = _provenance(payload)
             while True:
                 # Cada paso puede tardar (una búsqueda completa): se vigila la desconexión mientras dura.
@@ -911,10 +931,18 @@ def _stream_calculation(
         finally:
             # También al cerrarse el stream por desconexión: el hilo se detiene en la siguiente evaluación.
             cancelled.set()
-            _job_slots.release()
+            release_slot()
         _log_usage_event(request, endpoint, payload, "ok", time.perf_counter() - started, summary(final_payload))
 
-    return StreamingResponse(generate(), media_type="application/x-ndjson")
+    class JobStreamingResponse(StreamingResponse):
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                # Header transmission can fail before the body generator starts.
+                release_slot()
+
+    return JobStreamingResponse(generate(), media_type="application/x-ndjson", background=BackgroundTask(release_slot))
 
 
 def _family_summary(result: Dict[str, Any]) -> Dict[str, Any]:

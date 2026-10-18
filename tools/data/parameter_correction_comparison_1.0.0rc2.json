@@ -518,5 +518,8 @@
       "design_positions_evaluated": 108,
       "design_positions_changed_fraction": 0.5648148148148148
     }
-  }
+  },
+  "engine_version": "1.0.0rc2",
+  "scoring_convention": "positive_m1_plus_m3_plus_m4",
+  "comparison_scope": "paired parameter substitution within the rc2 engine; historical benchmark"
 }

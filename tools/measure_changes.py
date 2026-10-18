@@ -1,6 +1,7 @@
-"""Measure the numerical effect of each model change between 0.1.0 and the current candidate.
+"""Historical numerical comparison between 0.1.0 and 1.0.0rc1.
 
-Each variant restores one 0.1.0 behaviour on top of the current code with the other settings
+Run this historical benchmark from tag v1.0.0rc1. Each variant restores one
+0.1.0 behaviour on top of that release with the other settings
 held fixed. With --baseline, the complete 0.1.0 source tree is
 also run for an end-to-end comparison of the scoring benchmark.
 

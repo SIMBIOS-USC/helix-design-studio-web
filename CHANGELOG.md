@@ -2,7 +2,20 @@
 
 Use `v0.1.0` for the original comparison baseline, `v1.0.0rc2` for the source-corrected parameter tables, `v1.0.0rc4` for the last release with fixed-phase search objectives, `v1.0.0rc5` for aligned searches with positive M1, and `v1.0.0rc6` for aligned searches with the corrected negative M1 contribution. Each result reports the version, the parameter-set checksum, the complete request and the seed protocol under `provenance`; `GET /api/health` reports the running version. Results from different versions are not interchangeable.
 
+## 1.0.0rc7 — 2026-10-18
+
+- Validate Specificity against the resolved physical environments, remove equivalent off-targets, and explain incompatible candidate/restart budgets before submitting a calculation.
+- Keep homogeneous presets homogeneous by rejecting partial-sector and charged-interface overrides.
+- Respect the Family search budget `family_size × oversample_factor`, with an explicit default factor of 4. Factors 1–3 now reduce that budget; the default for a two-member family is 8 attempts. Completed candidates retain their search order and scores.
+- Return HTTP 503 for occupied streaming slots before sending response headers; retain streamed error events for failures after calculation starts.
+- Create the Docker cache and usage directories with the application user's ownership.
+- Explain component standardization and the negative M1 contribution in Behind the model. The browser guide presents the web workflows; technical backend examples remain in the repository documentation.
+- Supply a reproducible M1 reconstruction from the source residue and hydrogen-bonded-pair counts, and clarify historical benchmark provenance and bundled-material notices.
+- Hamiltonian equations, residue scales, parameter matrices, alignment and the angular exposure mapping are unchanged from 1.0.0rc6.
+
 ## 1.0.0rc6 — 2026-10-17
+
+- Reorganized the browser interface around sequence analysis and design, with a conceptual overview, clearer model guidance and updated project and funding identification.
 
 ### Helical pairing propensity in the minimized score
 
@@ -39,7 +52,7 @@ Use `v0.1.0` for the original comparison baseline, `v1.0.0rc2` for the source-co
 
 - Added a user-oriented API guide covering the computational endpoints, score interpretation, provenance, orientation and errors.
 - Added executable JSON requests for Design, Compare and Penetration alongside the existing Score example, plus a standard-library Python client. All four examples were executed against the local API.
-- Linked Swagger, ReDoc, the OpenAPI schema and the API guide from the browser Guide and README.
+- Linked Swagger, the OpenAPI schema and the API guide from the browser Guide and README; backend ReDoc is also available.
 - Scoring equations, numerical parameters and search algorithms are unchanged from 1.0.0rc2. The release version in responses identifies this documented source revision.
 
 ## 1.0.0rc2 — 2026-10-14
@@ -66,7 +79,7 @@ The report distinguishes agreement with published values (400 M1 + 324 M3 + 324 
 
 ### Numerical effects relative to 1.0.0rc1
 
-The [complete parameter comparison](tools/data/parameter_correction_comparison.json) holds the engine, weights, requests and random streams fixed while restoring M1, M4 or both; calibration is recomputed with the same sampled sequences for every parameter case. The benchmark uses the 12 reference sequences in the interface across five presets (60 Z-scores), the full alphabet, 1,000 calibration decoys, 500 random references and seed 42. Six 18-residue designs use 4,000 steps, two restarts, seeds 1–3 in the anionic interface and polar homogeneous medium.
+The [complete parameter comparison](tools/data/parameter_correction_comparison_1.0.0rc2.json) holds the engine, weights, requests and random streams fixed while restoring M1, M4 or both; calibration is recomputed with the same sampled sequences for every parameter case. The benchmark uses the 12 reference sequences in the interface across five presets (60 Z-scores), the full alphabet, 1,000 calibration decoys, 500 random references and seed 42. Six 18-residue designs use 4,000 steps, two restarts, seeds 1–3 in the anionic interface and polar homogeneous medium.
 
 | Parameter correction | Median / max \|ΔZ\| | Spearman of Z | Design positions changed |
 | --- | --- | --- | --- |
@@ -91,6 +104,7 @@ The output includes every score and designed sequence, the complete protocol, pa
 The seven sequence strings, printed lengths and fourteen rounded reference Z-scores in `tools/data/article_table1.json` were independently checked against the final published Table 1 (p. 9777). The [1.0.0rc2 direct-coefficient rerun](tools/data/article_table1_comparison_1.0.0rc2.json), with 2,000 calibration sequences, 10,000 random references per environment and seed 42, has mean absolute Z-score difference **0.303771** and maximum **0.439849**. These measure agreement under the declared rerun protocol; they do not establish the historical computation settings or experimental accuracy. The previous candidate output remains archived separately.
 
 ```bash
+git checkout v1.0.0rc2
 python tools/reproduce_article_table1.py --output article_table1_comparison_1.0.0rc2.json
 ```
 
