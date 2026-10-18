@@ -230,9 +230,18 @@ class WebSmokeTests(unittest.TestCase):
         try:
             self.assertTrue(all(slots))
             self.assertEqual(self.client.post("/api/design", json=self.design).status_code, 503)
-            with self.client.stream("POST", "/api/design-family-stream", json={**self.design, "family_size": 2}) as response:
-                events = [json.loads(line) for line in response.iter_lines() if line]
-            self.assertEqual([event["type"] for event in events], ["error"])
+            requests = {
+                "/api/design-family-stream": {**self.design, "family_size": 2},
+                "/api/specificity-design-stream": {
+                    **self.design, "num_sequences": 1,
+                    "target_environment": self.env_a, "off_target_environments": [self.env_b],
+                },
+            }
+            for route, payload in requests.items():
+                with self.subTest(route=route), self.client.stream("POST", route, json=payload) as response:
+                    self.assertEqual(response.status_code, 503)
+                    response.read()
+                    self.assertIn("busy", response.json()["detail"].lower())
         finally:
             for _ in slots:
                 main._job_slots.release()
@@ -616,15 +625,118 @@ assert all(json.loads(line)["timestamp_utc"] for line in log.splitlines())
                 self.assertEqual(first["z_score"], second["z_score"])
                 self.assertEqual(first["design_geometry"]["orientation"], "fixed wheel phase")
 
-    def test_specificity_keys_include_orientation_rule_for_partial_sectors(self):
-        """An explicitly overridden homogeneous preset remains fixed-phase, unlike an interface."""
+    def test_homogeneous_presets_reject_partial_sectors_and_membrane_charges(self):
+        """A homogeneous label must retain the physical environment it describes."""
         aligned = {"preset": "interfacial_neu", "wheel_halfwidth_deg": 90.0}
         fixed = {"preset": "homogeneous_polar", "wheel_halfwidth_deg": 90.0}
-        self.assertNotEqual(self.engine.physical_environment_key(aligned), self.engine.physical_environment_key(fixed))
-        result = self.post("/api/specificity-design", {
+        response = self.client.post("/api/specificity-design", json={
             **self.design, "target_environment": aligned, "off_target_environments": [fixed], "num_sequences": 1,
         })
-        self.assertEqual(len(result["off_target_environments"]), 1)
+        self.assertEqual(response.status_code, 422)
+        for preset, angle in (("homogeneous_polar", -1.0), ("homogeneous_apolar", 180.0)):
+            for override in ({"wheel_halfwidth_deg": 90.0}, {"membrane_charge": "neg"}):
+                with self.subTest(preset=preset, override=override):
+                    self.assertEqual(self.client.post("/api/score", json={
+                        **self.common, "sequence": "ALKD", "n_random": 100,
+                        "environment": {"preset": preset, **override},
+                    }).status_code, 422)
+                    with self.assertRaises(ValueError):
+                        self.engine.resolve_environment({"preset": preset, **override})
+            plain = self.post("/api/score", {
+                **self.common, "sequence": "ALKD", "n_random": 100, "environment": {"preset": preset},
+            })
+            explicit = self.post("/api/score", {
+                **self.common, "sequence": "ALKD", "n_random": 100,
+                "environment": {"preset": preset, "wheel_halfwidth_deg": angle, "membrane_charge": "neu"},
+            })
+            for key in ("energy", "z_score", "breakdown", "random_reference", "wheel"):
+                self.assertEqual(plain[key], explicit[key])
+
+    def test_family_oversampling_is_the_actual_search_budget(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app.main import FamilyDesignRequest
+
+        self.assertEqual(FamilyDesignRequest().oversample_factor, 4)
+        candidate = {"sequence": "AAAA", "codes": [0] * 4}
+        score = {"sequence": "AAAA", "design_geometry": {"energy": 0.0}}
+        for factor in range(1, 6):
+            with self.subTest(factor=factor), patch.object(
+                self.engine, "report_models", return_value=(SimpleNamespace(builder=None), None)
+            ), patch.object(self.engine, "simulated_annealing", return_value=candidate) as search, patch.object(
+                self.engine, "report_sequence", return_value=score
+            ):
+                updates = list(self.engine.design_family_stream(4, family_size=2, oversample_factor=factor))
+                self.assertEqual(updates[0]["payload"]["total_runs_budget"], 2 * factor)
+                self.assertEqual(search.call_count, 2 * factor)
+                final = updates[-1]["payload"]
+                self.assertEqual(final["design_settings"]["total_runs_budget"], 2 * factor)
+                self.assertEqual(final["family_size_returned"], 1)
+
+    def test_stream_startup_failure_releases_its_slot(self):
+        from unittest.mock import patch
+        from app import main
+
+        with patch.object(main, "design_family_stream", side_effect=ValueError("cannot start search")):
+            with self.client.stream("POST", "/api/design-family-stream", json={**self.design, "family_size": 2}) as response:
+                self.assertEqual(response.status_code, 200)
+                events = [json.loads(line) for line in response.iter_lines() if line]
+            self.assertEqual(events[-1]["type"], "error")
+            self.assertIn("cannot start search", events[-1]["detail"])
+        slots = [main._job_slots.acquire(blocking=False) for _ in range(main.MAX_CONCURRENT_JOBS + 1)]
+        try:
+            self.assertEqual(slots, [True] * main.MAX_CONCURRENT_JOBS + [False])
+        finally:
+            for acquired in slots:
+                if acquired:
+                    main._job_slots.release()
+
+    def test_stream_background_releases_slot_if_body_is_not_iterated(self):
+        import asyncio
+        from unittest.mock import Mock
+        from app import main
+
+        updates = Mock()
+        response = main._stream_calculation(Mock(), "test", Mock(), updates, lambda result: {})
+        updates.assert_not_called()
+        asyncio.run(response.background())
+        # Calling the finalizer twice must not release someone else's calculation slot.
+        asyncio.run(response.background())
+        slots = [main._job_slots.acquire(blocking=False) for _ in range(main.MAX_CONCURRENT_JOBS + 1)]
+        try:
+            self.assertEqual(slots, [True] * main.MAX_CONCURRENT_JOBS + [False])
+        finally:
+            for acquired in slots:
+                if acquired:
+                    main._job_slots.release()
+
+    def test_stream_header_send_failure_releases_its_slot(self):
+        import asyncio
+        from unittest.mock import AsyncMock, Mock
+        from starlette.requests import ClientDisconnect
+        from app import main
+
+        updates = Mock()
+        response = main._stream_calculation(Mock(), "test", Mock(), updates, lambda result: {})
+
+        async def send(message):
+            self.assertEqual(message["type"], "http.response.start")
+            raise OSError("client disconnected before response headers were sent")
+
+        try:
+            with self.assertRaises(ClientDisconnect):
+                asyncio.run(response({"type": "http", "asgi": {"spec_version": "2.4"}}, AsyncMock(), send))
+            updates.assert_not_called()
+            slots = [main._job_slots.acquire(blocking=False) for _ in range(main.MAX_CONCURRENT_JOBS + 1)]
+            try:
+                self.assertEqual(slots, [True] * main.MAX_CONCURRENT_JOBS + [False])
+            finally:
+                for acquired in slots:
+                    if acquired:
+                        main._job_slots.release()
+        finally:
+            # Keep the suite independent even if the expected cleanup fails.
+            asyncio.run(response.background())
 
     def test_pairwise_term_counts_contacts_up_to_i_plus_4(self):
         residues = list(self.engine.DEFAULT_ALPHABET_16)

@@ -16,6 +16,7 @@ const helperNames = [
   'setFormBusy', 'parseResidues', 'buildEnvironmentFromFormData',
   'buildEnvironmentFromPresetAndPenetration', 'penetrationPercentToHalfWidth',
   'calculationSettingsFromFormData',
+  'physicalEnvironmentKey', 'specificityRequestFromFormData',
 ];
 const helpers = helperNames.map((name) => {
   // Function bodies in app.js end with an unindented closing brace.
@@ -31,7 +32,7 @@ function provenance(mode) {
     parameters_sha256: 'parameters-fixture', seed_protocol: 'seed-sequence-fixture',
     python: '3.12.8', numpy: '2.2.4',
     request: {
-      length: 4, residues: ['A', 'E', 'K'], steps: 10, restarts: 2,
+      length: 4, residues: ['A', 'E', 'K'], steps: 10, restarts: 3,
       seed: 123, n_decoys: 2000, weights: { M1: 1, M2: 1, M3: 1, M4: 1 },
       ...(mode === 'family'
         ? { family_size: 3, environment: { preset: 'interfacial_neg' }, oversample_factor: 4 }
@@ -152,7 +153,7 @@ function streamHarness(mode, runStream, extraValues = {}) {
   const submit = new Element();
   form.querySelector = (selector) => selector === 'button[type="submit"]' ? submit : null;
   const values = {
-    length: '4', residues: 'A,E,K', steps: '10', restarts: '2', family_size: '3',
+    length: '4', residues: 'A,E,K', steps: '10', restarts: '3', family_size: '3',
     preset: 'interfacial_neg', penetration_depth: '25', num_sequences: '3',
     target_preset: 'interfacial_neg', off_target_preset: ['homogeneous_polar'], lambda_balance: '0',
     ...extraValues,
@@ -294,6 +295,26 @@ for (const mode of ['family', 'specificity']) {
     });
   }
 }
+
+test('specificity rejects an impossible candidate count before starting or locking the form', async () => {
+  const harness = streamHarness('specificity', async () => assert.fail('No request should be sent'), {
+    num_sequences: '5', restarts: '4',
+  });
+  await harness.form.dispatch('submit');
+  assert.equal(harness.streamCalls(), 0);
+  assert.match(harness.result.innerHTML, /cannot exceed the restart budget/);
+  assert.notEqual(harness.submit.disabled, true);
+});
+
+test('specificity reports an empty physical competitor set before submitting a request', async () => {
+  const harness = streamHarness('specificity', async () => assert.fail('No request should be sent'), {
+    penetration_depth: '0', off_target_preset: ['interfacial_neu', 'homogeneous_polar'],
+  });
+  await harness.form.dispatch('submit');
+  assert.equal(harness.streamCalls(), 0);
+  assert.match(harness.result.innerHTML, /different physical environment/);
+  assert.notEqual(harness.submit.disabled, true);
+});
 
 test('family renderer never offers an empty JSON collection', () => {
   const html = context().renderFamilyState({ members: [], target: 3, accepted: 0, finalData: { members: [] } });

@@ -304,6 +304,55 @@ function buildEnvironmentFromFormData(fd, presetFieldName, penetrationFieldName)
   );
 }
 
+function physicalEnvironmentKey(environment) {
+  const preset = String(environment.preset || 'interfacial_neg');
+  const halfWidth = Number(environment.wheel_halfwidth_deg
+    ?? (preset === 'homogeneous_polar' ? -1 : preset === 'homogeneous_apolar' ? 180 : 90));
+  const charge = environment.membrane_charge
+    ?? (preset === 'interfacial_neg' ? 'neg' : preset === 'interfacial_pos' ? 'pos' : 'neu');
+  if (halfWidth >= 180) return JSON.stringify(['all_apolar']);
+  if (halfWidth < 0) return JSON.stringify(['all_polar', charge]);
+  return JSON.stringify(['sector', halfWidth, 90, charge, isInterfacialPreset(preset)]);
+}
+
+function specificityRequestFromFormData(fd) {
+  const sharedPenetration = Number(fd.get('penetration_depth') ?? 25);
+  const exactHalfWidth = fd.get('exact_halfwidth_penetration_depth');
+  const environmentFor = (preset) => buildEnvironmentFromPresetAndPenetration(
+    String(preset), sharedPenetration, exactHalfWidth,
+  );
+  const target = environmentFor(fd.get('target_preset'));
+  const seen = new Set([physicalEnvironmentKey(target)]);
+  const offTargets = [];
+  fd.getAll('off_target_preset').forEach((preset) => {
+    const environment = environmentFor(preset);
+    const key = physicalEnvironmentKey(environment);
+    if (!seen.has(key)) {
+      seen.add(key);
+      offTargets.push(environment);
+    }
+  });
+  if (!offTargets.length) {
+    throw new Error('Select at least one competitor with a different physical environment. At 0% or 100% exposure, interfacial presets become the same homogeneous medium.');
+  }
+  const numSequences = Number(fd.get('num_sequences') || 10);
+  const restarts = Number(fd.get('restarts') || 20);
+  if (numSequences > restarts) {
+    throw new Error(`Requested candidates (${numSequences}) cannot exceed the restart budget (${restarts}). Increase restarts or request fewer candidates.`);
+  }
+  return {
+    ...calculationSettingsFromFormData(fd, 10000),
+    length: Number(fd.get('length') || 20),
+    residues: parseResidues(fd.get('residues')),
+    target_environment: target,
+    off_target_environments: offTargets,
+    num_sequences: numSequences,
+    lambda_balance: Number(fd.get('lambda_balance') || 0.0),
+    steps: Number(fd.get('steps') || 60000),
+    restarts,
+  };
+}
+
 function calculationSettingsFromFormData(fd, defaultCalibration = 2000) {
   const calibration = fd.get('n_decoys');
   const seed = fd.get('seed');
@@ -413,18 +462,27 @@ function syncSpecificityControls() {
   if (!targetSelect || !sharedPenetrationField || !specificityCheckboxes.length) return;
 
   const targetPreset = String(targetSelect.value || '');
-  const anyInterfacialOffTarget = specificityCheckboxes.some((input) => input.checked && isInterfacialPreset(input.value));
+  const form = targetSelect.closest('form');
+  const percent = Number($('[name="penetration_depth"]', form)?.value ?? 25);
+  const exactInput = $('[name="exact_halfwidth_penetration_depth"]', form);
+  const exactHalfWidth = exactInput?.validity?.valid === false ? null : exactInput?.value;
+  const targetKey = physicalEnvironmentKey(buildEnvironmentFromPresetAndPenetration(targetPreset, percent, exactHalfWidth));
+  const anyInterfacialOffTarget = specificityCheckboxes.some((input) =>
+    (input.checked || input.dataset.wasChecked === 'true') && isInterfacialPreset(input.value));
   const needsSharedPenetration = isInterfacialPreset(targetPreset) || anyInterfacialOffTarget;
   sharedPenetrationField.classList.toggle('hidden-field', !needsSharedPenetration);
 
   specificityCheckboxes.forEach((input) => {
     const option = input.closest('.selector-option');
-    const sameAsTarget = input.value === targetPreset;
+    const sameAsTarget = targetKey === physicalEnvironmentKey(
+      buildEnvironmentFromPresetAndPenetration(input.value, percent, exactHalfWidth),
+    );
     if (sameAsTarget && !input.disabled) {
       input.dataset.wasChecked = input.checked ? 'true' : 'false';
       input.checked = false;
     } else if (!sameAsTarget && input.disabled) {
       input.checked = input.dataset.wasChecked === 'true';
+      delete input.dataset.wasChecked;
     }
     input.disabled = sameAsTarget;
     option?.classList.toggle('selector-option-disabled', sameAsTarget);
@@ -1665,25 +1723,18 @@ let specificityController = null;
 specificityForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (specificityController) return;  // one run at a time; use Stop to end it
+  let payload;
+  try {
+    payload = specificityRequestFromFormData(new FormData(specificityForm));
+  } catch (error) {
+    specificityResult.innerHTML = errorHtml(error.message);
+    return;
+  }
   const controller = new AbortController();
   specificityController = controller;
   setFormBusy(specificityForm, true);
-  const fd = new FormData(specificityForm);
-  const targetPreset = String(fd.get('target_preset'));
-  const sharedPenetration = Number(fd.get('penetration_depth') || 25);
-  const selectedOffTargets = fd.getAll('off_target_preset').map((value) => String(value));
-  const exactHalfWidth = fd.get('exact_halfwidth_penetration_depth');
-  const payload = {
-    ...calculationSettingsFromFormData(fd, 10000),
-    length: Number(fd.get('length') || 20),
-    residues: parseResidues(fd.get('residues')),
-    target_environment: buildEnvironmentFromPresetAndPenetration(targetPreset, sharedPenetration, exactHalfWidth),
-    off_target_environments: selectedOffTargets.map((preset) => buildEnvironmentFromPresetAndPenetration(preset, sharedPenetration, exactHalfWidth)),
-    num_sequences: Number(fd.get('num_sequences') || 10),
-    lambda_balance: Number(fd.get('lambda_balance') || 0.0),
-    steps: Number(fd.get('steps') || 60000),
-    restarts: Number(fd.get('restarts') || 20),
-  };
+  const targetPreset = payload.target_environment.preset;
+  const selectedOffTargets = payload.off_target_environments.map((environment) => environment.preset);
 
   const state = {
     phase: 'initializing',
@@ -1870,6 +1921,7 @@ familyForm.addEventListener('submit', async (event) => {
     residues: parseResidues(fd.get('residues')),
     environment: buildEnvironmentFromFormData(fd, 'preset', 'penetration_depth'),
     family_size: Number(fd.get('family_size') || 6),
+    oversample_factor: 4,
     steps: Number(fd.get('steps') || 10000),
     restarts: Number(fd.get('restarts') || 6),
   };

@@ -4,7 +4,7 @@
 
 Helix Design Studio scores and designs peptide sequences in a **predefined alpha-helical state**, with polar, apolar and membrane-like environments. Its browser interface supports sequence scoring, single and family design, environmental comparisons, specificity design, exposure scans and idealized PDB export.
 
-**Current version: 1.0.0rc6**, a release candidate for evaluation. Searches and sequence scoring use the same hydrophobic-moment alignment rule. The neighbor score rewards larger helical pairing propensities through a negative M1 contribution. The published parameter tables and model adaptations are described below.
+**Current version: 1.0.0rc7**, a release candidate for evaluation. Searches and sequence scoring use the same hydrophobic-moment alignment rule. The neighbor score rewards larger helical pairing propensities through a negative M1 contribution. The published parameter tables and model adaptations are described below.
 
 ## Installation
 
@@ -13,7 +13,7 @@ Use **Python 3.12** and the pinned dependencies. Interactive molecular rendering
 ```bash
 git clone https://github.com/SIMBIOS-USC/helix-design-studio-web.git
 cd helix-design-studio-web
-git checkout v1.0.0rc6
+git checkout v1.0.0rc7
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -58,7 +58,9 @@ Each calculation panel provides Advanced settings for the calibration sample cou
 - The Penetration scan changes an angular exposure mask. Its coordinate is not a physical insertion depth or a free-energy reaction coordinate.
 - Calibration and reference distributions depend on sequence length, alphabet, environment, orientation rule, sample sizes and seeds. Scores from different protocols are not directly interchangeable.
 
-Source citations, axis definitions and the complete comparison procedure are given in [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance).
+Source citations, axis definitions and the complete comparison procedure are given in [parameter provenance](THIRD_PARTY_NOTICES.md#parameter-provenance). Reconstruct the 400 printed M1 values from the published pairing and residue counts with `python tools/reconstruct_m1_from_counts.py`.
+
+The software manuscript evaluates the immutable `v1.0.0rc6` source snapshot. Version 1.0.0rc7 preserves its Hamiltonian and parameter tables while improving input validation, search-budget handling and documentation.
 
 The [archived 1.0.0rc2 Table 1 rerun](tools/data/article_table1_comparison_1.0.0rc2.json) evaluates the seven exact sequence strings and fourteen rounded Z-scores of the published method article with the positive-M1 convention used by that release. Its mean and maximum absolute Z-score differences are 0.303771 and 0.439849. These historical measurements describe that specific release and rerun protocol. The [changelog](CHANGELOG.md) records the subsequent alignment and M1-scoring changes; archived numerical results must be associated with their recorded software version.
 
@@ -78,6 +80,7 @@ helix_sd_i_4.txt      492bb545cc304bd51a417ad7ffa4e9cac6babf8cf4b256a828406551cc
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
+node --test tests/*.js
 ```
 
 The tests cover the computational API, streaming responses, static assets, idealized PDB export, input validation, request limits, usage logging, calibration caching, label-based parameter indexing, literature residue scales, all published neighbor parameters and consistency between workflows. They do not establish sampling convergence or experimental validity.
@@ -122,7 +125,7 @@ For a public deployment, run the service behind a reverse proxy that terminates 
 - `app/`: API, search workflows and static browser interface.
 - `Code/`: scoring, calibration and four parameter tables.
 - `tests/`, `examples/` and `docs/`: automated checks, API request examples, a Python client and the API guide.
-- `tools/measure_changes.py`: measures the numerical effect of each model change between versions, with a separate control that changes only the search random stream.
+- `tools/measure_changes.py`: historical 0.1.0-to-1.0.0rc1 comparison, to be run from `v1.0.0rc1`; it includes a separate control that changes only the search random stream.
 - `tools/reproduce_article_table1.py`: reruns the method article's Table 1 sequences with the current model. `--include-positive-m1` adds an explicitly labelled earlier-sign control; each variant records its formula, version and parameter checksum. The optional negative-log control rejects the published zeros without smoothing. `tools/data/` retains the separately versioned historical comparisons.
 - `tools/verify_parameter_sources.py` and `tools/data/parameter_sources/`: verify runtime neighbor parameters against the transcribed primary tables, with explicit source axes and model extensions.
 - `LICENSES/`, `THIRD_PARTY_NOTICES.md`, `CITATION.cff`: licenses, attribution and citation metadata.

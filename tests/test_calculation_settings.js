@@ -11,6 +11,7 @@ const names = [
   'buildEnvironmentFromPresetAndPenetration', 'buildEnvironmentFromFormData',
   'calculationSettingsFromFormData', 'calculationSettingsHtml',
   'initializeCalculationSettings', 'syncExactHalfWidthControls', 'parseResidues',
+  'physicalEnvironmentKey', 'specificityRequestFromFormData', 'syncSpecificityControls',
 ];
 const helpers = names.map((name) => {
   const match = source.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
@@ -18,7 +19,10 @@ const helpers = names.map((name) => {
   return match[0];
 }).join('\n');
 const plain = (value) => JSON.parse(JSON.stringify(value));
-const formData = (values) => ({ get: (name) => values[name] ?? null });
+const formData = (values) => ({
+  get: (name) => values[name] ?? null,
+  getAll: (name) => values[name] ?? [],
+});
 
 function context(overrides = {}) {
   const ctx = vm.createContext(overrides);
@@ -51,6 +55,54 @@ test('sampling controls accept seed zero and the full backend ranges', () => {
   for (const bad of ['-1', '4294967296', '1.5', 'abc']) {
     assert.throws(() => ctx.calculationSettingsFromFormData(formData({ seed: bad })), /random seed/);
   }
+});
+
+test('specificity filters physical duplicates at the exposure endpoints before submission', () => {
+  const ctx = context();
+  const values = {
+    target_preset: 'interfacial_neg', off_target_preset: ['interfacial_neu', 'interfacial_pos', 'homogeneous_apolar'],
+    penetration_depth: '0', residues: 'A,L,K,D', num_sequences: '2', restarts: '2',
+  };
+  let result = ctx.specificityRequestFromFormData(formData(values));
+  assert.deepEqual(plain(result.target_environment), { preset: 'homogeneous_polar' });
+  assert.deepEqual(plain(result.off_target_environments), [{ preset: 'homogeneous_apolar' }]);
+  values.penetration_depth = '100';
+  assert.throws(() => ctx.specificityRequestFromFormData(formData(values)), /different physical environment/);
+  values.off_target_preset = ['homogeneous_polar', 'interfacial_pos'];
+  result = ctx.specificityRequestFromFormData(formData(values));
+  assert.deepEqual(plain(result.off_target_environments), [{ preset: 'homogeneous_polar' }]);
+  values.penetration_depth = '50';
+  values.exact_halfwidth_penetration_depth = '90';
+  result = ctx.specificityRequestFromFormData(formData(values));
+  assert.equal(result.target_environment.wheel_halfwidth_deg, 90);
+  assert.equal(result.off_target_environments.length, 2, 'Different interface charges remain distinct');
+  values.num_sequences = '3';
+  assert.throws(() => ctx.specificityRequestFromFormData(formData(values)), /cannot exceed the restart budget/);
+});
+
+test('specificity competitor controls disable equivalent media and restore choices when exposure changes', () => {
+  const form = {};
+  const target = { value: 'interfacial_neg', closest: () => form };
+  const slider = { value: '0' };
+  const classes = () => ({ toggle: () => {} });
+  const field = { classList: classes() };
+  const choices = ['interfacial_neu', 'homogeneous_apolar'].map((value) => ({
+    value, checked: true, disabled: false, dataset: {}, closest: () => ({ classList: classes() }),
+  }));
+  const ctx = context({
+    $: (selector) => selector === '[name="target_preset"]' ? target
+      : selector === '[data-penetration-field="specificity_shared"]' ? field
+        : selector === '[name="penetration_depth"]' ? slider : null,
+    $$: () => choices,
+  });
+  ctx.syncSpecificityControls();
+  assert.equal(choices[0].disabled, true);
+  assert.equal(choices[0].checked, false);
+  assert.equal(choices[1].disabled, false);
+  slider.value = '50';
+  ctx.syncSpecificityControls();
+  assert.equal(choices[0].disabled, false);
+  assert.equal(choices[0].checked, true);
 });
 
 test('all calculation forms receive controls inside their existing advanced settings', () => {

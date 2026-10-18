@@ -1014,7 +1014,7 @@
         <strong>
          penetration depth
         </strong>
-        is a percentage with the same meaning in every panel: 0% is the homogeneous polar medium, 100% the homogeneous apolar medium, and intermediate values use the interfacial preset with an apolar sector half-width of 40° + 1.1° per percent. It is an angular exposure setting, not a physical insertion depth. In interfacial environments, scoring and design both align each sequence by its own hydrophobic moment toward the apolar sector. Calibration and random reference sequences follow the same rule. If the hydrophobic moment vanishes, the preset wheel phase is used. Orientation has no effect in homogeneous media.
+        is a percentage with the same meaning in every panel: 0% is the homogeneous polar medium, 100% the homogeneous apolar medium, and, by default, intermediate values use the interfacial preset with an apolar sector half-width of 40° + 1.1° per percent. Advanced settings can specify the apolar-sector half-width directly. It is an angular exposure setting, not a physical insertion depth. In interfacial environments, scoring and design both align each sequence by its own hydrophobic moment toward the apolar sector. Calibration and random reference sequences follow the same rule. If the hydrophobic moment vanishes, the preset wheel phase is used. Orientation has no effect in homogeneous media.
        </p>
        <p>
         In the workspace, “Non-polar exposure” and “Explore exposure” refer to the original penetration-depth setting: an angular exposure coordinate, not a physical insertion depth. Interface labels indicate membrane surface charge.
@@ -1036,107 +1036,27 @@
        </p>
       </details>
       <details class="guide-card">
-       <summary>
-        Hamiltonian terms
-       </summary>
+       <summary>Hamiltonian terms</summary>
        <div class="equation-block">
-        <div class="equation">
-         H = λ
-         <sub>
-          env
-         </sub>
-         H
-         <sub>
-          env
-         </sub>
-         + λ
-         <sub>
-          chg
-         </sub>
-         H
-         <sub>
-          chg
-         </sub>
-         + λ
-         <sub>
-          local
-         </sub>
-         H
-         <sub>
-          local
-         </sub>
-         + λ
-         <sub>
-          pair
-         </sub>
-         H
-         <sub>
-          pair
-         </sub>
-         + λ
-         <sub>
-          elec
-         </sub>
-         H
-         <sub>
-          elec
-         </sub>
-         + λ
-         <sub>
-          neigh
-         </sub>
-         H
-         <sub>
-          neigh
-         </sub>
-        </div>
+        <div class="equation">H = Σ<sub>a=1…6</sub> w<sub>a</sub> z<sub>a</sub></div>
+        <div class="equation">z<sub>a</sub> = (h<sub>a</sub> − μ<sub>a</sub>) / σ<sub>a</sub></div>
        </div>
-       <p>
-        <strong>
-         Environment
-        </strong>
-        rewards residues that match the target medium.
-        <strong>
-         Charge
-        </strong>
-        captures residue preference with membrane surface charge.
-        <strong>
-         Local helix
-        </strong>
-        and
-        <strong>
-         Helix neighbors
-        </strong>
-        reward helical propensity.
-        <strong>
-         Pairwise
-        </strong>
-        adds sequence-dependent interaction preferences.
-        <strong>
-         Electrostatics
-        </strong>
-        captures attractive and repulsive charge interactions along the helix. The transverse hydrophobic moment is a geometric descriptor displayed on the helical wheel and used for interfacial alignment. It is not an energy term. Histidine contributes through the hydrophobicity and helical-propensity terms and is neutral in the charge-dependent terms.
-       </p>
-      </details>
-      <details class="guide-card">
-       <summary>
-        API and programmatic examples
-       </summary>
-       <p>
-        Use the HTTP API to run scoring, sequence design, environment comparisons and exposure scans from scripts. Open
-        <a class="external-link" href="/docs" rel="noopener noreferrer" target="_blank">
-         interactive API documentation
-        </a>
-        , download the
-        <a class="external-link" href="/openapi.json" rel="noopener noreferrer" target="_blank">
-         OpenAPI schema
-        </a>
-        , or follow the
-        <a class="external-link" href="https://github.com/SIMBIOS-USC/helix-design-studio-web/blob/main/docs/API.md" rel="noopener noreferrer" target="_blank">
-         API guide with curl and Python examples
-        </a>
-        . Check the serving version in the schema and retain each result's provenance when reporting calculations.
-       </p>
+       <p>The six raw contributions h<sub>a</sub> are standardized using their means μ<sub>a</sub> and standard deviations σ<sub>a</sub> over random sequences of the same length and allowed residues, evaluated in the same environment and with the same orientation rule. The weights w<sub>a</sub> set their relative importance. Lower total scores indicate greater compatibility within this model.</p>
+       <ul>
+        <li><strong>Environment:</strong> rewards hydrophobic residues facing the apolar sector and polar residues facing the water-like sector.</li>
+        <li><strong>Charge:</strong> rewards opposite-charge complementarity on the water-facing side of a charged interface. Residue–residue attraction and repulsion are included separately in Electrostatics.</li>
+        <li><strong>Local helix:</strong> averages the single-residue helix-propensity penalties of <a class="external-link" href="https://doi.org/10.1016/S0006-3495(98)77529-0" rel="noopener noreferrer" target="_blank">Pace and Scholtz</a>.</li>
+        <li><strong>Pairwise:</strong> combines <a class="external-link" href="https://doi.org/10.1006/jmbi.1996.0114" rel="noopener noreferrer" target="_blank">Miyazawa–Jernigan interaction coefficients</a> for residues separated by one to four sequence positions.</li>
+        <li><strong>Electrostatics:</strong> includes attractive opposite-charge and repulsive same-charge interactions, with environment-dependent screening.</li>
+        <li><strong>Helix neighbors:</strong> combines the three pair-dependent contributions below.</li>
+       </ul>
+       <div class="equation-block">
+        <div class="equation">h<sub>neigh</sub> = −⟨M1⟩<sub>i,i+1</sub> + ⟨M3⟩<sub>i,i+3</sub> + ⟨M4⟩<sub>i,i+4</sub></div>
+       </div>
+       <p>Each mean includes the available residue pairs at its stated sequence separation. Larger M1 helical pairing propensities lower the score through the negative sign. Negative M3/M4 interaction coefficients also lower the score. The combined neighbor contribution is standardized as one component before weighting.</p>
+       <p>M1 uses the pairing propensities of <a class="external-link" href="https://doi.org/10.1007/s10930-020-09880-6" rel="noopener noreferrer" target="_blank">Nacar (2020)</a>, measured for hydrogen-bonded n,n+4 pairs in globular proteins and adapted here to i,i+1. M3 and M4 use the i,i+3 and i,i+4 interaction coefficients of <a class="external-link" href="https://doi.org/10.1038/nsb0694-399" rel="noopener noreferrer" target="_blank">Muñoz and Serrano (1994)</a>. These source parameters form an empirical, comparative score.</p>
+       <p>The transverse hydrophobic moment sets the rotation of the helix towards the apolar sector. Histidine uses its tabulated values in the non-charge contributions and is neutral in both charge-dependent contributions.</p>
+       <p>The reported total-score Z-score uses a second, independent random-reference ensemble: Z<sub>H</sub> = (H − mean(H<sub>ref</sub>)) / std(H<sub>ref</sub>). A negative Z-score means that the sequence scores below the mean of that environment's reference ensemble.</p>
       </details>
       <details class="guide-card">
        <summary>
